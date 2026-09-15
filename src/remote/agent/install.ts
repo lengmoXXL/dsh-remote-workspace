@@ -13,14 +13,15 @@
  * left untouched, and the caller's own handshake is the real liveness check, so
  * this module never opens a TCP probe from the host.
  *
- * The agent is started through the account's login shell rather than directly,
- * because the SSH command that reaches this module runs under sshd, whose
- * environment is minimal. Without the login shell the daemon would inherit that
- * minimal environment and pass it on to everything it starts — the routing
- * subprocess, git, and the Sidebar terminal — so a PATH the profile extends or
- * the user's own `SHELL` would never arrive. A launch-recipe marker beside the
- * binary is what keeps that from going stale: a machine still running an agent
- * started the old way is restarted instead of reused.
+ * The agent is started through the account's interactive login shell rather
+ * than directly, because the SSH command that reaches this module runs under
+ * sshd, whose environment is minimal, and because rc files routinely hide their
+ * PATH setup behind an interactive guard. Without the login shell the daemon
+ * would inherit that minimal environment and pass it on to everything it starts
+ * — the routing subprocess, git, and the Sidebar terminal — so a PATH the
+ * profile extends or the user's own `SHELL` would never arrive. A launch-recipe
+ * marker beside the binary is what keeps that from going stale: a machine still
+ * running an agent started the old way is restarted instead of reused.
  *
  * Every remote snippet below is shaped for the same three reasons: bytes the
  * plugin owns travel on stdin rather than in the command string, where shell
@@ -57,7 +58,7 @@ export const AGENT_VERSION = '0.0.3'
  * environment that is, so a machine left running an agent from the previous
  * recipe is restarted rather than reused.
  */
-export const LAUNCH_RECIPE_VERSION = 1
+export const LAUNCH_RECIPE_VERSION = 2
 
 /** A started agent, and where a forward can reach it. */
 export interface AgentEndpoint {
@@ -169,7 +170,7 @@ const WRITE_TOKEN = 'cat > "$HOME/.dsh/remote-agent/token" && chmod 600 "$HOME/.
 const WRITE_LAUNCH_ENV = 'cat > "$HOME/.dsh/remote-agent/launch-env.json"'
 
 /**
- * The agent invocation, run with `exec` from inside the login shell.
+ * The agent invocation, run with `exec` from inside the interactive login shell.
  *
  * Quoted as one word so the outer non-interactive shell hands it to the login
  * shell untouched; it holds no single quote of its own. The paths stay relative
@@ -194,9 +195,18 @@ function shQuote(value: string): string {
  * The shell is resolved on the machine in the order a person would expect:
  * {@link EnsureAgentOptions.loginShell} when a test names one, then `$SHELL`,
  * then the passwd entry (`getent` on Linux, `dscl` on Darwin), then `bash`, then
- * `sh`. `exec` inside `-lc` replaces that login shell with the agent, so the
+ * `sh`. `exec` inside `-ilc` replaces that login shell with the agent, so the
  * agent's environment is the login environment, its pid is the pid the state
  * file publishes, and it stays the session leader `setsid` created.
+ *
+ * The `i` is the whole point of the recipe: rc files commonly hide their PATH
+ * setup behind an interactive guard — the node's `~/.bashrc` returns early
+ * unless `$-` contains `i`, and only then adds `~/.local/bin` — so a
+ * non-interactive login shell silently drops exactly the tool directories the
+ * agent's commands need. VS Code's remote resolver runs the interactive login
+ * shell for the same reason. Banners and job-control warnings an interactive
+ * shell may print are harmless: they follow the same `agent.log` redirection,
+ * the state file is read from disk, and the handshake runs over the socket.
  *
  * The start itself is unchanged: `setsid` gives the agent a session of its own
  * where the machine has it, `nohup` survives the hangup either way, every
@@ -208,7 +218,7 @@ function shQuote(value: string): string {
  */
 function startAgentCommand(loginShell?: string): string {
   const seed = loginShell === undefined ? '"$SHELL"' : shQuote(loginShell)
-  const launch = `"$agent_shell" -lc ${AGENT_UNDER_LOGIN_SHELL} >>agent.log 2>&1 </dev/null &`
+  const launch = `"$agent_shell" -ilc ${AGENT_UNDER_LOGIN_SHELL} >>agent.log 2>&1 </dev/null &`
   return 'cd "$HOME/.dsh/remote-agent" && {'
     + ` agent_shell=${seed};`
     + ' if [ ! -x "$agent_shell" ]; then agent_shell="$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f7)"; fi;'

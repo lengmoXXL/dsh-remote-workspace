@@ -5,10 +5,13 @@
  * `ensureAgent` runs the real start command through the real shell on this
  * machine — only `ssh` is replaced, by a runner that executes each command
  * locally under a temporary `$HOME`. A temporary "login shell" stands in for
- * the account's profile: it exports one marker and then hands over to the real
- * shell, so the suite proves the environment a login shell sets is inherited by
- * the agent and by every process it spawns, without depending on whatever the
- * developer's own profile happens to contain.
+ * the account's profile and its interactive guard: like the node's `.bashrc`,
+ * which returns early unless `$-` contains `i` and only then adds
+ * `~/.local/bin`, it extends PATH with a marker directory only when the shell
+ * was asked to be interactive. The suite proves that environment reaches the
+ * agent and every process it spawns, without depending on whatever the
+ * developer's own profile happens to contain — and, because the guard is real,
+ * without a start command that quietly skips the interactive branch.
  *
  * The second half pins the other side of the launch recipe: a machine whose
  * recorded recipe no longer matches is restarted, not reused.
@@ -17,7 +20,7 @@
 import assert from 'node:assert/strict'
 import { after, before, test } from 'node:test'
 import { spawn } from 'node:child_process'
-import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { agentBinaryPath } from '../agent-binary.ts'
@@ -36,13 +39,14 @@ import { asNodeId } from '../../src/storage/nodes.ts'
 import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 
 const TOKEN = 'launch-env-token-0123456789'
-const MARKER_NAME = 'DRW_LOGIN_MARKER'
-const MARKER_VALUE = 'set-by-the-login-shell'
+const MARKER_TOOL = 'drw-login-marker'
+const MARKER_OUTPUT = 'set-by-the-login-shell'
 const SSH: SshTarget = { target: 'localhost' }
 
 let home: string
 let remoteRoot: string
 let loginShell: string
+let markerTool: string
 let run: AgentCommandRunner
 let binary: Buffer
 let endpoint: AgentEndpoint
@@ -131,12 +135,23 @@ function ensureOptions(): Parameters<typeof ensureAgent>[0] {
 before(async () => {
   home = await mkdtemp(join(tmpdir(), 'drw-launch-home-'))
   remoteRoot = await mkdtemp(join(tmpdir(), 'drw-launch-root-'))
+  const markerDir = join(home, 'login-bin')
+  markerTool = join(markerDir, MARKER_TOOL)
+  await mkdir(markerDir, { recursive: true })
+  await writeFile(markerTool, `#!/bin/sh\nprintf %s '${MARKER_OUTPUT}'\n`, 'utf8')
+  await chmod(markerTool, 0o755)
   loginShell = join(home, 'login-shell')
   await writeFile(loginShell, [
     '#!/bin/sh',
-    '# A stand-in for a login profile: set one marker, then become the real shell.',
-    `${MARKER_NAME}='${MARKER_VALUE}'`,
-    `export ${MARKER_NAME}`,
+    '# A stand-in for the account\'s login shell and the profile it reads: like',
+    '# the node\'s .bashrc, its PATH entry is added only in an interactive shell.',
+    '# A script receives the flag cluster as an argument rather than in its own',
+    '# `$-`, so the guard reads the invocation and then hands it to the real',
+    '# shell. The banner stands for oh-my-bash or theme output: it must land in',
+    '# agent.log and change nothing the start path reads.',
+    'case "$1" in',
+    `  *i*) PATH="${markerDir}:$PATH"; export PATH; echo 'banner from the login profile';;`,
+    'esac',
     'exec /bin/sh "$@"',
     '',
   ].join('\n'), 'utf8')
@@ -159,7 +174,7 @@ after(async () => {
   await rm(remoteRoot, { recursive: true, force: true })
 })
 
-test('the agent and everything it spawns inherit the login environment', async () => {
+test('a command the agent spawns sees the interactive login shell PATH entry', async () => {
   assert.equal(endpoint.reused, false)
   assert.equal(endpoint.version, AGENT_VERSION)
 
@@ -179,14 +194,14 @@ test('the agent and everything it spawns inherit the login environment', async (
   })
 
   const handle = runtime.spawn({
-    argv: ['/bin/sh', '-c', 'printf %s "$' + MARKER_NAME + '"'],
+    argv: ['/bin/sh', '-c', `command -v ${MARKER_TOOL}`],
     cwd: remoteRoot,
     stdio: { stdin: 'ignore', stdout: { maxBytes: 1 << 16 }, stderr: { maxBytes: 1 << 16 } },
     graceMs: 2_000,
   })
   await handle.done
 
-  assert.equal(handle.collected.stdout?.readFrom(0).text, MARKER_VALUE)
+  assert.equal(handle.collected.stdout?.readFrom(0).text.trim(), markerTool)
 })
 
 test('a changed launch recipe restarts the running agent instead of reusing it', async () => {

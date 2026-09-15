@@ -62,7 +62,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Idempotent: a tag can produce more than one run, and the loser of
+          # that race must upload to the release the winner created instead of
+          # failing the workflow.
           gh release create "$GITHUB_REF_NAME" \
             dist/dsh-remote-workspace-*.tgz \
             --repo lengmoXXL/dsh-remote-workspace \
-            --verify-tag --generate-notes
+            --verify-tag --generate-notes \
+          || gh release upload "$GITHUB_REF_NAME" \
+            dist/dsh-remote-workspace-*.tgz \
+            --repo lengmoXXL/dsh-remote-workspace --clobber

@@ -1,6 +1,6 @@
 {
   "name": "dsh-remote-workspace",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "DeepSeek Harness plugin for working on other machines: manage machines over SSH, work in their repositories and worktrees, and open a terminal there.",
   "type": "module",
