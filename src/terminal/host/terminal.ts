@@ -7,11 +7,13 @@
  * terminal itself, because the model-facing terminal tool drives the same
  * shell; this module never allocates or releases one directly.
  *
- * A tab owns its shell. The socket closing is what ends it — a browser that is
- * closed, reloaded, or disconnected leaves no shell behind, and a shell whose
- * process exits closes its socket — so the registry entry disappears with the
- * tab and the tool can no longer address it. A Session ending releases its
- * terminals through the registry's own hook; nothing else outlives the tab.
+ * A tab owns its shell, but the socket is only a view of it. A socket that
+ * closes without a `close` frame detaches: the registry keeps the PTY and its
+ * retained output, so a reload or a dropped connection can `attach` back and
+ * see the same shell for as long as it lives. The `close` frame is what a tab
+ * teardown sends, and it ends the terminal at once. A shell whose process exits
+ * still closes its socket and is released, and a Session ending releases its
+ * terminals through the registry's own hook.
  *
  * Output is paced one chunk at a time through the sink the registry calls: a
  * command that floods the terminal pauses the PTY's output stream until the
@@ -24,7 +26,7 @@
 import { Buffer } from 'node:buffer'
 import type { Context } from '@deepseek-ai/cordis'
 import { WebSocket, type RawData } from 'ws'
-import type { ClientFrame, HostFrame, OpenFrame } from '../shared/wire.ts'
+import type { AttachFrame, ClientFrame, HostFrame, OpenFrame } from '../shared/wire.ts'
 import type { TerminalRegistry, TerminalSink } from './registry.ts'
 import { resolveWorkspace } from './workspace.ts'
 
@@ -109,13 +111,23 @@ export function attachTerminal(ctx: Context, registry: TerminalRegistry, socket:
     },
   }
 
-  /** Release this socket's terminal; the registry removes it, so the tool loses it too. */
+  /** This socket went away without a `close` frame: keep the shell it was viewing. */
   const stop = (): void => {
     if (closed) return
     closed = true
     const current = entryId
     entryId = undefined
+    if (current !== undefined) registry.detach(current, sink)
+  }
+
+  /** The tab closed: end its shell now instead of leaving it detached. */
+  const endNow = (): void => {
+    if (closed) return
+    closed = true
+    const current = entryId
+    entryId = undefined
     if (current !== undefined) void registry.kill(current)
+    socket.close(1000, 'closed')
   }
 
   /** Register the shell for one Session's workspace and start streaming it. */
@@ -165,6 +177,34 @@ export function attachTerminal(ctx: Context, registry: TerminalRegistry, socket:
     post({ t: 'size', cols: next.cols, rows: next.rows, live })
   }
 
+  /** Reattach this socket to a terminal it already knows by id. */
+  const reattach = (frame: AttachFrame): void => {
+    if (closed) return
+    if (entryId !== undefined || opening) {
+      post({ t: 'error', message: 'this connection already owns a terminal' })
+      return
+    }
+    let entry
+    try {
+      // The registry replays the retained output to this sink before anything
+      // new can arrive, so a remounted terminal shows its history in order.
+      entry = registry.attach(frame.id, sink)
+    } catch (error: unknown) {
+      // A terminal that is gone is the browser's cue to open a fresh one.
+      post({ t: 'error', message: describe(error) })
+      return
+    }
+    entryId = entry.id
+    // The PTY's own geometry is what was applied; the frame's is what the
+    // browser measures now, and any difference is a real resize.
+    applied = { cols: entry.cols, rows: entry.rows }
+    post({ t: 'ready', pid: entry.handle.pid, cwd: entry.cwd, id: entry.id, label: entry.label })
+    for (const data of typed.splice(0)) {
+      void registry.write(entry.id, data).catch(() => undefined)
+    }
+    void applySize(frame.cols, frame.rows)
+  }
+
   socket.on('close', stop)
   socket.on('error', stop)
   socket.on('message', (data: RawData, isBinary: boolean) => {
@@ -178,6 +218,12 @@ export function attachTerminal(ctx: Context, registry: TerminalRegistry, socket:
     switch (frame.t) {
       case 'open':
         void open(frame)
+        return
+      case 'attach':
+        reattach(frame)
+        return
+      case 'close':
+        endNow()
         return
       case 'input': {
         const current = entryId

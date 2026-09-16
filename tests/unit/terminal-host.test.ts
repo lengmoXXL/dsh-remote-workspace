@@ -174,10 +174,13 @@ function ttyContext(spawn: (request: TtySpawnRequest) => Promise<TtyHandle>, cwd
 }
 
 /** The registry one socket's terminal is registered in. */
-function terminalRegistry(spawn: (request: TtySpawnRequest) => Promise<TtyHandle>) {
+function terminalRegistry(
+  spawn: (request: TtySpawnRequest) => Promise<TtyHandle>,
+  detachGraceMs?: number,
+) {
   return createTerminalRegistry({
     spawn,
-    settings,
+    settings: detachGraceMs === undefined ? settings : { ...settings, detachGraceMs },
     machine: () => ({ nodeId: 'local', label: 'Local' }),
   })
 }
@@ -274,22 +277,121 @@ test('a resize the provider refuses is reported stale instead of failing the ter
   assert.deepEqual(browser.frames.at(-1), { t: 'size', cols: 100, rows: 30, live: false })
 })
 
-test('a browser that goes away releases the terminal', async () => {
+test('a browser that goes away detaches the terminal instead of ending it', async () => {
   const { terminal, browser, registry } = await opened()
   assert.deepEqual(registry.listFor('session-1').map(view => view.id), ['t1'])
   browser.close()
   await new Promise(resolve => setImmediate(resolve))
+
+  assert.equal(terminal.terminations(), 0)
+  // The tab may come back, so the shell stays addressable; `detached` says
+  // nobody is watching it.
+  assert.deepEqual(registry.listFor('session-1').map(view => view.state), ['detached'])
+  assert.equal(registry.requireOwned('session-1').id, 't1')
+})
+
+test('a detached terminal outlives the socket, and the process exiting releases it', async () => {
+  const { terminal, browser, registry } = await opened()
+  browser.close()
+  await new Promise(resolve => setImmediate(resolve))
+  // No valve is configured, so a socket leaving is the only thing that
+  // happened: the shell is still there, addressable.
+  assert.equal(terminal.terminations(), 0)
+  assert.deepEqual(registry.listFor('session-1').map(view => view.state), ['detached'])
+
+  // The process exits while nobody watches: that is what ends the entry.
+  terminal.exit({ exitCode: 0, signal: null })
+  await new Promise(resolve => setImmediate(resolve))
+
   assert.equal(terminal.terminations(), 1)
-  // The tab owns the shell: closing it removes the terminal from the table the
-  // model's tool reads, so a tool call can no longer reach a shell nobody sees.
   assert.deepEqual(registry.listFor('session-1'), [])
-  assert.throws(() => registry.requireOwned('session-1'), /this session has no open terminal/)
+})
+
+test('an attach frame reattaches to a detached terminal and replays its output', async () => {
+  const terminal = fakeTerminal()
+  const registry = terminalRegistry(async () => terminal.handle)
+  const ctx = ttyContext(async () => terminal.handle, '/w/live')
+  const first = fakeSocket()
+  attachTerminal(ctx, registry, first.socket)
+  first.send({ t: 'open', sessionId: 'session-1', cols: 80, rows: 24 })
+  await new Promise(resolve => setImmediate(resolve))
+  terminal.emit('history\n')
+  await new Promise(resolve => setImmediate(resolve))
+
+  // What a page reload looks like from the host: the socket closes with no
+  // close frame, and a new socket comes back with the id it remembers.
+  first.close()
+  await new Promise(resolve => setImmediate(resolve))
+  const second = fakeSocket()
+  attachTerminal(ctx, registry, second.socket)
+  second.send({ t: 'attach', id: 't1', cols: 90, rows: 30 })
+  await new Promise(resolve => setImmediate(resolve))
+
+  assert.deepEqual(second.frames, [
+    { t: 'ready', pid: 4242, cwd: '/w/live', id: 't1', label: 'Terminal 1' },
+    { t: 'size', cols: 90, rows: 30, live: true },
+  ])
+  // The retained bytes reach the new socket, in order, before the frames.
+  assert.equal(
+    second.sent[0] instanceof Buffer && (second.sent[0] as Buffer).toString('utf8') === 'history\n',
+    true,
+  )
+  assert.deepEqual(terminal.resizes, [[90, 30]])
+  assert.deepEqual(registry.listFor('session-1').map(view => view.state), ['running'])
+})
+
+test('an attach frame for a terminal that is gone answers with a readable error', async () => {
+  const terminal = fakeTerminal()
+  const registry = terminalRegistry(async () => terminal.handle)
+  const browser = fakeSocket()
+  attachTerminal(ttyContext(async () => terminal.handle, '/w/live'), registry, browser.socket)
+
+  browser.send({ t: 'attach', id: 't9', cols: 80, rows: 24 })
+  await new Promise(resolve => setImmediate(resolve))
+
+  const frames = browser.frames as { readonly t: string; readonly message?: string }[]
+  assert.deepEqual(frames.map(frame => frame.t), ['error'])
+  assert.match(frames[0]?.message ?? '', /terminal "t9" is not open/)
+})
+
+test('a close frame ends the terminal at once, while a dropped socket only detaches it', async () => {
+  const { terminal, browser, registry } = await opened()
+  browser.send({ t: 'close' })
+  await new Promise(resolve => setImmediate(resolve))
+
+  assert.equal(terminal.terminations(), 1)
+  assert.deepEqual(registry.listFor('session-1'), [])
+  assert.equal(browser.closed()?.code, 1000)
+})
+
+test('a detached terminal is released when its configured valve expires', async () => {
+  const terminal = fakeTerminal()
+  const registry = terminalRegistry(async () => terminal.handle, 25)
+  const browser = fakeSocket()
+  attachTerminal(ttyContext(async () => terminal.handle, '/w/live'), registry, browser.socket)
+  browser.send({ t: 'open', sessionId: 'session-1', cols: 80, rows: 24 })
+  await new Promise(resolve => setImmediate(resolve))
+
+  browser.close()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(terminal.terminations(), 0)
+
+  await new Promise(resolve => { setTimeout(resolve, 80) })
+  assert.equal(terminal.terminations(), 1)
+  assert.deepEqual(registry.listFor('session-1'), [])
 })
 
 test('a terminal that exits says so and closes the socket', async () => {
-  const { terminal, browser } = await opened()
+  const { terminal, browser, registry } = await opened()
   terminal.exit({ exitCode: 0, signal: null })
   await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(browser.frames.at(-1), { t: 'exit', code: 0, signal: null })
   assert.equal(browser.closed()?.code, 1000)
+
+  // The socket close this produces is what detaches an already-exited entry,
+  // and the registry releases it at once rather than keeping a corpse.
+  browser.close()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(terminal.terminations(), 1)
+  assert.deepEqual(registry.listFor('session-1'), [])
 })

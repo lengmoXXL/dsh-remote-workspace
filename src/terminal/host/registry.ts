@@ -2,12 +2,12 @@
  * The host's terminals, as a lookup table of the shells a person's tabs have
  * open.
  *
- * A tab owns its shell. The browser's socket `open` frame registers a terminal
- * here, its `input` and `resize` frames drive it, and the socket closing
- * releases it. Nothing survives the tab, which is why this is a lookup table
- * rather than a session-scoped lifetime: a terminal the model can address is a
- * terminal a person currently has on screen, and there is no reattach protocol
- * because there is nothing to reattach to.
+ * A tab owns its shell, but the socket is only a view of it. The socket closing
+ * detaches: the terminal stays in the table, its output keeps filling the ring
+ * buffer, and the model's tool can still address it for as long as the process
+ * lives. An explicit `close` from the tab, the process exiting, the owning
+ * Session ending, or an optional detach valve releases it; nobody watching is
+ * not by itself a reason to end a shell.
  *
  * The table exists for the model. The sidebar terminal never needs to look up
  * its own shell, but the model-facing terminal tool must find one that a
@@ -38,6 +38,16 @@ export interface TerminalSettings {
   readonly env: Readonly<Record<string, string>>
   /** TERM-to-KILL grace for the whole terminal session, in milliseconds. */
   readonly graceMs: number
+  /**
+   * Safety valve: how long a terminal whose last socket went away is kept
+   * alive, in milliseconds, before it is released.
+   *
+   * Unset or `0` — the default — keeps it alive for as long as its process
+   * lives, because how long a browser is gone says nothing about whether the
+   * shell should end. A positive value releases a detached terminal that long
+   * after the last sink left, which is a bound the operator opts into.
+   */
+  readonly detachGraceMs?: number
 }
 
 /** One consumer of a live terminal's output. */
@@ -74,8 +84,15 @@ export interface TerminalView {
   readonly machine: string
   /** Process id on that machine. */
   readonly pid: number
-  /** Lifecycle state; a released terminal is absent from the list entirely. */
-  readonly state: 'running' | 'exited'
+  /**
+   * Lifecycle state; a released terminal is absent from the list entirely.
+   *
+   * `detached` is a live shell nobody is watching: its last socket went away
+   * and it lives on until it is closed, its process exits, or its Session ends.
+   * The model can still address it, and saying so is the difference between a
+   * terminal that is gone and one that is waiting to be reattached.
+   */
+  readonly state: 'running' | 'detached' | 'exited'
   /** Current column count. */
   readonly cols: number
   /** Current row count. */
@@ -97,7 +114,7 @@ export interface TerminalEntry {
   bytes: number
   /** Bytes dropped from the front of the stream to keep `buffer` bounded. */
   dropped: number
-  state: 'running' | 'exited'
+  state: 'running' | 'detached' | 'exited'
   /** How the process ended, once it has; absent while it runs. */
   outcome?: TtyOutcome
   cols: number
@@ -108,6 +125,8 @@ export interface TerminalEntry {
   readonly attaches: Set<TerminalSink>
   /** Waiters to wake when output arrives or the process exits. */
   readonly waiters: Set<() => void>
+  /** Pending release of a terminal whose last socket detached; absent while attached. */
+  detachTimer?: NodeJS.Timeout | undefined
 }
 
 /** One bounded page of retained output. */
@@ -171,13 +190,23 @@ export interface TerminalRegistry {
     size: { readonly cols: number; readonly rows: number },
   ): Promise<TerminalEntry>
   /**
-   * Deliver a terminal's output to one consumer.
+   * Deliver a terminal's output to one consumer, replaying what it missed.
+   *
+   * The retained output is handed to the sink before any later chunk, so a
+   * reattached socket shows history in order. Attaching also cancels a pending
+   * detach valve: the terminal is watched again.
    * @param id - the terminal.
    * @param sink - where output, exit, and failure go.
+   * @returns the entry, for the frame the socket answers with.
+   * @throws TerminalRegistryError when the terminal is unknown or already exited.
    */
-  attach(id: string, sink: TerminalSink): void
+  attach(id: string, sink: TerminalSink): TerminalEntry
   /**
    * Stop delivering a terminal's output to one consumer, without ending it.
+   *
+   * The last sink leaving marks the terminal `detached` without ending it; an
+   * already-exited terminal is released at once instead, and a configured
+   * detach valve schedules that release for later.
    * @param id - the terminal.
    * @param sink - the consumer to remove.
    */
@@ -202,7 +231,8 @@ export interface TerminalRegistry {
    * The only authorization point in this module: nothing else decides whether a
    * Session may touch a terminal. A named terminal that is unknown, owned by
    * another Session, or already exited is refused without saying which, because
-   * distinguishing them would report on another Session's terminal.
+   * distinguishing them would report on another Session's terminal. A detached
+   * terminal is still addressable — a dropped connection is not an exit.
    * @param sessionId - the calling Session.
    * @param id - the requested terminal, or undefined when the Session has exactly one.
    * @returns the entry.
@@ -330,6 +360,7 @@ export function createTerminalRegistry(options: TerminalRegistryOptions): Termin
   const entries = new Map<string, TerminalEntry>()
   /** Monotonic id source; never reused, so a restart never inherits an id. */
   let nextOrdinal = 0
+  const detachGraceMs = options.settings.detachGraceMs ?? 0
 
   /** Append output, dropping the oldest bytes once the cap is reached. */
   const append = (entry: TerminalEntry, chunk: Buffer): void => {
@@ -399,17 +430,26 @@ export function createTerminalRegistry(options: TerminalRegistryOptions): Termin
     })
     entry.handle.done.then(
       (outcome) => {
-        entry.state = 'exited'
         entry.outcome = outcome
-        for (const sink of entry.attaches) sink.exit(outcome)
-        notify(entry)
+        settle(entry, sink => { sink.exit(outcome) })
       },
       (error: unknown) => {
-        entry.state = 'exited'
-        for (const sink of entry.attaches) sink.fail(error)
-        notify(entry)
+        settle(entry, sink => { sink.fail(error) })
       },
     )
+  }
+
+  /**
+   * Mark a terminal exited, report it, and release it if nobody is watching.
+   *
+   * A detached shell whose process exits has no browser to come back to and no
+   * valve to wait on, so the entry goes with the process.
+   */
+  const settle = (entry: TerminalEntry, report: (sink: TerminalSink) => void): void => {
+    entry.state = 'exited'
+    for (const sink of entry.attaches) report(sink)
+    notify(entry)
+    if (entry.attaches.size === 0) void registry.kill(entry.id)
   }
 
   /** The entry, or a failure — for internal callers that already hold a live id. */
@@ -457,12 +497,44 @@ export function createTerminalRegistry(options: TerminalRegistryOptions): Termin
       return entry
     },
 
-    attach(id, sink): void {
-      entryOf(id).attaches.add(sink)
+    attach(id, sink): TerminalEntry {
+      const entry = entryOf(id)
+      if (entry.state === 'exited') {
+        throw new TerminalRegistryError(`terminal "${id}" has already exited`)
+      }
+      // A reattach ends any pending valve: the shell is watched again.
+      if (entry.detachTimer !== undefined) {
+        clearTimeout(entry.detachTimer)
+        entry.detachTimer = undefined
+      }
+      if (entry.state === 'detached') entry.state = 'running'
+      entry.attaches.add(sink)
+      // Replay before the pump can deliver anything new: the sink is already in
+      // `attaches`, but data events run after this call returns, so the retained
+      // bytes reach the socket first.
+      if (entry.buffer.length > 0) void sink.output(entry.buffer)
+      return entry
     },
 
     detach(id, sink): void {
-      entries.get(id)?.attaches.delete(sink)
+      const entry = entries.get(id)
+      if (entry === undefined) return
+      entry.attaches.delete(sink)
+      if (entry.attaches.size > 0) return
+      if (entry.state === 'exited') {
+        // Nothing is left to reattach to; release it rather than leaving a
+        // corpse in the table until the Session ends.
+        void registry.kill(id)
+        return
+      }
+      entry.state = 'detached'
+      if (entry.detachTimer !== undefined || detachGraceMs <= 0) return
+      entry.detachTimer = setTimeout(() => {
+        entry.detachTimer = undefined
+        void registry.kill(id)
+      }, detachGraceMs)
+      // A pending release must not hold the host process open.
+      entry.detachTimer.unref()
     },
 
     async resize(id, cols, rows): Promise<boolean> {
@@ -501,29 +573,29 @@ export function createTerminalRegistry(options: TerminalRegistryOptions): Termin
             + (mine.length === 0 ? '; this session has no open terminal' : `; open terminals: ${describe(mine)}`),
           )
         }
-        if (entry.state !== 'running') {
+        if (entry.state === 'exited') {
           throw new TerminalRegistryError(`terminal "${id}" has already exited`)
         }
         return entry
       }
-      const running = mine.filter(entry => entry.state === 'running')
-      if (running.length === 0) {
+      const live = mine.filter(entry => entry.state !== 'exited')
+      if (live.length === 0) {
         throw new TerminalRegistryError(mine.length === 0
           ? 'this session has no open terminal; open one in the sidebar first'
           : `every terminal in this session has exited: ${describe(mine)}`)
       }
-      if (running.length > 1) {
+      if (live.length > 1) {
         throw new TerminalRegistryError(
-          `this session has ${String(running.length)} open terminals; `
-          + `pass "terminal" with one of: ${describe(running)}`,
+          `this session has ${String(live.length)} open terminals; `
+          + `pass "terminal" with one of: ${describe(live)}`,
         )
       }
-      return running[0]!
+      return live[0]!
     },
 
     async write(id, text): Promise<number> {
       const entry = entryOf(id)
-      if (entry.state !== 'running') {
+      if (entry.state === 'exited') {
         throw new TerminalRegistryError(`terminal "${id}" has already exited`)
       }
       await entry.handle.write(text)
@@ -533,7 +605,7 @@ export function createTerminalRegistry(options: TerminalRegistryOptions): Termin
 
     async keys(id, names): Promise<{ bytes: number; keys: number }> {
       const entry = entryOf(id)
-      if (entry.state !== 'running') {
+      if (entry.state === 'exited') {
         throw new TerminalRegistryError(`terminal "${id}" has already exited`)
       }
       // Every name is resolved before any byte is written, so an unknown key
@@ -599,7 +671,7 @@ export function createTerminalRegistry(options: TerminalRegistryOptions): Termin
             finish(true, 'match')
             return
           }
-          if (entry.state !== 'running') finish(false, 'exit')
+          if (entry.state === 'exited') finish(false, 'exit')
         }
         if (signal?.aborted === true) {
           abort()
@@ -619,6 +691,10 @@ export function createTerminalRegistry(options: TerminalRegistryOptions): Termin
     async kill(id): Promise<void> {
       const entry = entries.get(id)
       if (entry === undefined) return
+      if (entry.detachTimer !== undefined) {
+        clearTimeout(entry.detachTimer)
+        entry.detachTimer = undefined
+      }
       entries.delete(id)
       entry.attaches.clear()
       entry.state = 'exited'

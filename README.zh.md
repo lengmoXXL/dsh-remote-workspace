@@ -19,7 +19,7 @@
 ## 安装
 
 ```sh
-dsh plugin --profile web add https://github.com/lengmoXXL/dsh-remote-workspace/releases/download/plugin-v0.1.4/dsh-remote-workspace-0.1.4.tgz
+dsh plugin --profile web add https://github.com/lengmoXXL/dsh-remote-workspace/releases/download/plugin-v0.1.5/dsh-remote-workspace-0.1.5.tgz
 ```
 
 插件要接管 base profile 提供的服务，而 host plane 每项服务只允许一个实现。把这四行加进
@@ -66,5 +66,6 @@ dsh plugin --profile web add https://github.com/lengmoXXL/dsh-remote-workspace/r
 | `shell` | 未设置 | 侧边栏终端运行的程序；未设置则用机器自己的登录 shell。 |
 | `shellArgs` | `['-l']` | `shell` 之后的参数；`shell` 未设置时忽略。 |
 | `graceMs` | `3000` | 关闭终端时留给它退出的时间（毫秒）。 |
+| `detachGraceMs` | `0` | 安全阀：终端 socket 断开（刷新页面、连接掉线）后保留多久等待重新接入（毫秒）。`0`（默认）表示只要进程还在就一直保留。 |
 
 MIT

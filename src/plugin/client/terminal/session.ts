@@ -8,9 +8,12 @@
  * different tab. Instead the xterm instance, its scrollback, its DOM element,
  * and its socket all live here, the body borrows them for as long as it is
  * mounted, and the record's own abort signal — fired when the tab is closed,
- * not when it is hidden — is what finally tears the entry down. The socket
- * closing is what makes the host kill the shell, so nothing outlives the tab.
- *
+ * not when it is hidden — is what finally tears the entry down. Closing the tab
+ * sends the host an explicit `close`, which ends the shell; a socket that drops
+ * on its own only detaches the shell, and the id kept here is what reattaches
+ * to it. Because the shell restores no tab across a reload, that id is also
+ * written to `localStorage` per Session, so a terminal tab the person opens
+ * again comes back to the shell it had.
  *
  * @module dsh-remote-workspace/plugin/client/terminal/session
  */
@@ -58,7 +61,8 @@ interface Entry {
   readonly element: HTMLDivElement
   readonly term: Terminal
   readonly fit: FitAddon
-  readonly socket: WebSocket
+  /** Replaced when a dropped socket is reconnected; the terminal itself stays. */
+  socket: WebSocket
   readonly observer: ResizeObserver
   /**
    * The registry id and label the host assigned, once it has.
@@ -67,8 +71,8 @@ interface Entry {
    * title, so two terminal tabs on screen are told apart the same way the model
    * tells them apart in a call.
    */
-  id?: string
-  label?: string
+  id?: string | undefined
+  label?: string | undefined
   /** The element the body is currently drawing into; the entry moves between them. */
   host: HTMLElement
   /** Replaced on every mount, so a remounted body receives the live state. */
@@ -78,6 +82,8 @@ interface Entry {
   size: { cols: number; rows: number }
   /** Set once a resize was refused, so the layout's staleness is explained rather than guessed at. */
   fixedSize: boolean
+  /** Which frame this socket's first answer belongs to, so an attach failure falls back to open. */
+  pending: 'open' | 'attach'
 }
 
 /** The monospace stack a terminal is drawn in. */
@@ -85,6 +91,46 @@ const MONO_FONT = "'SF Mono', 'Menlo', 'DejaVu Sans Mono', 'Cascadia Mono', 'Con
 
 /** Scrollback lines one terminal keeps in the browser. */
 const SCROLLBACK_LINES = 5000
+
+/** Where this page remembers one terminal per Session, across reloads. */
+const MEMORY_KEY = 'dsh-remote-workspace.terminal'
+
+/**
+ * The terminal one Session is remembered by, or undefined when there is none.
+ *
+ * The shell restores no sidebar tab across a reload, so this page's own memory
+ * is what lets a person reopen a terminal tab and land in the shell they had.
+ * Storage can be unavailable — private mode, a disabled quota — and a missing
+ * answer reads exactly like never having remembered one.
+ * @param sessionId - the Session whose terminal is wanted.
+ * @returns the remembered registry id, if any.
+ */
+function remembered(sessionId: string): string | undefined {
+  try {
+    const known = JSON.parse(localStorage.getItem(MEMORY_KEY) ?? '{}') as Record<string, string>
+    return known[sessionId]
+  } catch {
+    return undefined
+  }
+}
+
+/** Record one Session's terminal, or forget it when `id` is null. */
+function memorize(sessionId: string, id: string | null): void {
+  try {
+    const known = JSON.parse(localStorage.getItem(MEMORY_KEY) ?? '{}') as Record<string, string>
+    if (id === null) delete known[sessionId]
+    else known[sessionId] = id
+    localStorage.setItem(MEMORY_KEY, JSON.stringify(known))
+  } catch {
+    // Storage is unavailable; the terminal keeps working, it just cannot be
+    // found again after a reload.
+  }
+}
+
+/** Forget one Session's terminal, unless a newer one has replaced it. */
+function forget(sessionId: string, id: string | undefined): void {
+  if (id !== undefined && remembered(sessionId) === id) memorize(sessionId, null)
+}
 
 /** Every terminal this page owns, keyed by tab record id. */
 const entries = new Map<string, Entry>()
@@ -191,9 +237,6 @@ function create(mount: TerminalMount): Entry {
     fit.fit()
   })
 
-  const socket = new WebSocket(socketUrl())
-  socket.binaryType = 'arraybuffer'
-
   const entry: Entry = {
     tabId: mount.tabId,
     sessionId: mount.sessionId,
@@ -201,13 +244,17 @@ function create(mount: TerminalMount): Entry {
     element,
     term,
     fit,
-    socket,
+    socket: new WebSocket(socketUrl()),
     observer,
     host: mount.host,
     onState: mount.onState,
+    // A terminal this Session already had is what a reopened tab comes back to;
+    // the socket decides from the id whether to attach or to open.
+    id: remembered(mount.sessionId),
     state: { kind: 'opening' },
     size: { cols: term.cols, rows: term.rows },
     fixedSize: false,
+    pending: 'open',
   }
 
   // A size the browser measures before the socket is up is what the open frame
@@ -220,13 +267,44 @@ function create(mount: TerminalMount): Entry {
   term.onData((data) => {
     send(entry, { t: 'input', data })
   })
+  wire(entry)
+
+  // The record disappearing is the only thing that ends a terminal: hiding the
+  // tab, switching Session, or collapsing the column all unmount the body
+  // without aborting this signal.
+  mount.signal.addEventListener('abort', () => {
+    dispose(mount.tabId)
+  }, { once: true })
+
+  return entry
+}
+
+/**
+ * Bind a socket to its entry.
+ *
+ * A new socket for an entry that already has an id attaches to that terminal —
+ * a shell the host kept because a dropped socket is not an exit — and one
+ * without an id opens a fresh terminal. An attach that fails because the entry
+ * is gone falls back to opening, on the same socket.
+ * @param entry - the terminal the socket belongs to.
+ */
+function wire(entry: Entry): void {
+  const socket = entry.socket
+  socket.binaryType = 'arraybuffer'
 
   socket.addEventListener('open', () => {
-    send(entry, { t: 'open', sessionId: mount.sessionId, cols: entry.size.cols, rows: entry.size.rows })
+    const { cols, rows } = entry.size
+    if (entry.id === undefined) {
+      entry.pending = 'open'
+      send(entry, { t: 'open', sessionId: entry.sessionId, cols, rows })
+    } else {
+      entry.pending = 'attach'
+      send(entry, { t: 'attach', id: entry.id, cols, rows })
+    }
   })
   socket.addEventListener('message', (event: MessageEvent<unknown>) => {
     if (event.data instanceof ArrayBuffer) {
-      term.write(new Uint8Array(event.data))
+      entry.term.write(new Uint8Array(event.data))
       return
     }
     let frame: HostFrame
@@ -239,6 +317,7 @@ function create(mount: TerminalMount): Entry {
       case 'ready':
         entry.id = frame.id
         entry.label = frame.label
+        memorize(entry.sessionId, frame.id)
         emitLabels()
         emit(entry, { kind: 'live', cwd: frame.cwd, fixedSize: entry.fixedSize })
         return
@@ -247,9 +326,21 @@ function create(mount: TerminalMount): Entry {
         if (entry.state.kind === 'live') emit(entry, { ...entry.state, fixedSize: entry.fixedSize })
         return
       case 'exit':
+        forget(entry.sessionId, entry.id)
         emit(entry, { kind: 'ended', code: frame.code, signal: frame.signal })
         return
       case 'error':
+        if (entry.pending === 'attach') {
+          // The host no longer has this terminal, so the id is meaningless:
+          // drop it and open a fresh shell on the same socket.
+          forget(entry.sessionId, entry.id)
+          entry.id = undefined
+          entry.label = undefined
+          emitLabels()
+          entry.pending = 'open'
+          send(entry, { t: 'open', sessionId: entry.sessionId, cols: entry.size.cols, rows: entry.size.rows })
+          return
+        }
         emit(entry, { kind: 'failed', message: frame.message })
         return
       default:
@@ -259,15 +350,6 @@ function create(mount: TerminalMount): Entry {
   socket.addEventListener('close', () => {
     if (entry.state.kind === 'opening' || entry.state.kind === 'live') emit(entry, { kind: 'closed' })
   })
-
-  // The record disappearing is the only thing that ends a terminal: hiding the
-  // tab, switching Session, or collapsing the column all unmount the body
-  // without aborting this signal.
-  mount.signal.addEventListener('abort', () => {
-    dispose(mount.tabId)
-  }, { once: true })
-
-  return entry
 }
 
 /** Release one terminal: its shell, its socket, and its scrollback. */
@@ -275,8 +357,12 @@ function dispose(tabId: string): void {
   const entry = entries.get(tabId)
   if (entry === undefined) return
   entries.delete(tabId)
+  forget(entry.sessionId, entry.id)
   emitLabels()
   entry.observer.disconnect()
+  // A tab that closes ends its shell; the host reads this frame as a teardown
+  // rather than the disconnect a dropped socket looks like.
+  send(entry, { t: 'close' })
   entry.socket.close(1000, 'closed')
   entry.term.dispose()
   entry.element.remove()
@@ -313,12 +399,26 @@ export function mountTerminal(mount: TerminalMount): () => void {
 }
 
 /**
- * Replace one terminal with a fresh one, for a shell that has exited.
+ * Restart one terminal: reattach to it if it is still on the host, or replace
+ * it with a fresh one.
+ *
+ * A socket that dropped is not a dead shell — the host keeps the terminal while
+ * its process lives — so restarting reconnects to the id this entry already
+ * knows and keeps its scrollback. A shell that exited has no id left to reach,
+ * and a failed allocation has none yet, so those start over.
  * @param tabId - the Sidebar tab record's id.
  */
 export function restartTerminal(tabId: string): void {
   const entry = entries.get(tabId)
   if (entry === undefined) return
+  if (entry.state.kind === 'closed' && entry.id !== undefined) {
+    entry.socket = new WebSocket(socketUrl())
+    wire(entry)
+    emit(entry, { kind: 'opening' })
+    entry.fit.fit()
+    entry.term.focus()
+    return
+  }
   const mount: TerminalMount = {
     tabId: entry.tabId,
     sessionId: entry.sessionId,

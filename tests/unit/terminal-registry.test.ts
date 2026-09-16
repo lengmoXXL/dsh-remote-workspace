@@ -1,7 +1,8 @@
 /**
  * The terminal registry's own decisions, away from any socket or tool: who may
- * address a terminal, what attach and detach forward, how the byte ring stays
- * accountable, what a key name means, and what an exited terminal reports.
+ * address a terminal, what attach and detach forward, how a detached terminal
+ * lives or is released, how the byte ring stays accountable, what a key name
+ * means, and what an exited terminal reports.
  *
  * The seam is faked at its boundary, so every case here is about the table's
  * contract rather than about a PTY.
@@ -65,8 +66,8 @@ function fakeTerminal(): FakeTerminal {
   }
 }
 
-/** A registry over one fake provider. */
-function harness(): { registry: TerminalRegistry; terminal: FakeTerminal; requests: TtySpawnRequest[] } {
+/** A registry over one fake provider, optionally with an explicit detach valve. */
+function harness(detachGraceMs?: number): { registry: TerminalRegistry; terminal: FakeTerminal; requests: TtySpawnRequest[] } {
   const terminal = fakeTerminal()
   const requests: TtySpawnRequest[] = []
   const registry = createTerminalRegistry({
@@ -74,7 +75,7 @@ function harness(): { registry: TerminalRegistry; terminal: FakeTerminal; reques
       requests.push(request)
       return terminal.handle
     },
-    settings,
+    settings: detachGraceMs === undefined ? settings : { ...settings, detachGraceMs },
     machine: () => ({ nodeId: 'local', label: 'Local' }),
   })
   return { registry, terminal, requests }
@@ -166,6 +167,136 @@ test('attach forwards output produced while attached and detach stops it', async
   assert.deepEqual(sink.chunks, ['before\n'])
   // Detaching stops delivery, not the terminal: the output is still retained.
   assert.match(registry.read('t1').text, /before\nafter\n/)
+})
+
+test('a socket close detaches: the entry survives and its buffer keeps filling', async () => {
+  const { registry, terminal } = harness()
+  await registry.open('s1', '/w/a', { cols: 80, rows: 24 })
+  const sink = recorder()
+  registry.attach('t1', sink)
+  terminal.emit('before\n')
+  await settle()
+
+  // What the socket's `close` handler does: detach, rather than kill.
+  registry.detach('t1', sink)
+  terminal.emit('after\n')
+  await settle()
+
+  assert.deepEqual(registry.listFor('s1').map(view => view.state), ['detached'])
+  assert.equal(terminal.terminations(), 0)
+  // The shell kept running and the ring buffer kept filling while nobody watched.
+  assert.match(registry.read('t1').text, /before\nafter\n/)
+  assert.deepEqual(sink.chunks, ['before\n'])
+})
+
+test('attach replays the retained output to the new sink before anything new', async () => {
+  const { registry, terminal } = harness()
+  await registry.open('s1', '/w/a', { cols: 80, rows: 24 })
+  const first = recorder()
+  registry.attach('t1', first)
+  terminal.emit('one\n')
+  await settle()
+  registry.detach('t1', first)
+  terminal.emit('two\n')
+  await settle()
+
+  const second = recorder()
+  const entry = registry.attach('t1', second)
+
+  assert.equal(entry.id, 't1')
+  // The whole retained tail arrives as one replay, in order, before new output.
+  assert.deepEqual(second.chunks, ['one\ntwo\n'])
+  assert.deepEqual(registry.listFor('s1').map(view => view.state), ['running'])
+
+  terminal.emit('three\n')
+  await settle()
+  assert.deepEqual(second.chunks, ['one\ntwo\n', 'three\n'])
+})
+
+test('an explicit close kills the terminal at once, with no valve to wait for', async () => {
+  // The default configures no valve, so the only thing that can end this
+  // terminal is the explicit close.
+  const { registry, terminal } = harness()
+  await registry.open('s1', '/w/a', { cols: 80, rows: 24 })
+  const sink = recorder()
+  registry.attach('t1', sink)
+  registry.detach('t1', sink)
+
+  await registry.kill('t1')
+
+  assert.equal(terminal.terminations(), 1)
+  assert.deepEqual(registry.listFor('s1'), [])
+})
+
+test('a detached terminal outlives the clock when no valve is configured', async (t) => {
+  // An hour stands in for the old two-minute default, which no test can wait
+  // out. The sentinel proves the clock really moved, so this cannot pass by
+  // ticking nothing.
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  let sentinel = false
+  setTimeout(() => { sentinel = true }, 1)
+  const { registry, terminal } = harness()
+  await registry.open('s1', '/w/a', { cols: 80, rows: 24 })
+  const sink = recorder()
+  registry.attach('t1', sink)
+  registry.detach('t1', sink)
+
+  t.mock.timers.tick(60 * 60_000)
+
+  assert.equal(sentinel, true, 'the mock clock advanced')
+  assert.equal(terminal.terminations(), 0)
+  assert.deepEqual(registry.listFor('s1').map(view => view.state), ['detached'])
+  // Still the same shell and still addressable, which is what a browser that
+  // comes back hours later needs.
+  await registry.write('t1', 'echo still here\r')
+  assert.deepEqual(terminal.writes, ['echo still here\r'])
+})
+
+test('a detached terminal whose process exits is released without a valve', async () => {
+  const { registry, terminal } = harness()
+  await registry.open('s1', '/w/a', { cols: 80, rows: 24 })
+  const sink = recorder()
+  registry.attach('t1', sink)
+  registry.detach('t1', sink)
+
+  terminal.exit({ exitCode: 0, signal: null })
+  await settle()
+
+  assert.equal(terminal.terminations(), 1)
+  assert.deepEqual(registry.listFor('s1'), [])
+  assert.throws(() => registry.requireOwned('s1', 't1'), /no terminal "t1" is open in this session/)
+})
+
+test('a configured valve releases a terminal nobody came back for', async () => {
+  const { registry, terminal } = harness(20)
+  await registry.open('s1', '/w/a', { cols: 80, rows: 24 })
+  const sink = recorder()
+  registry.attach('t1', sink)
+  registry.detach('t1', sink)
+
+  assert.deepEqual(registry.listFor('s1').map(view => view.state), ['detached'])
+  await new Promise(resolve => { setTimeout(resolve, 80) })
+
+  assert.equal(terminal.terminations(), 1)
+  assert.deepEqual(registry.listFor('s1'), [])
+  assert.throws(() => registry.requireOwned('s1', 't1'), /no terminal "t1" is open in this session/)
+})
+
+test('a detached terminal is still addressable by its Session while it lives', async () => {
+  const { registry, terminal } = harness()
+  await registry.open('s1', '/w/a', { cols: 80, rows: 24 })
+  const sink = recorder()
+  registry.attach('t1', sink)
+  terminal.emit('still here\n')
+  await settle()
+  registry.detach('t1', sink)
+
+  const entry = registry.requireOwned('s1', 't1')
+  assert.equal(entry.state, 'detached')
+  assert.match(registry.read('t1').text, /still here/)
+  await registry.write('t1', 'echo hi\r')
+  await registry.keys('t1', ['enter'])
+  assert.deepEqual(terminal.writes, ['echo hi\r', '\r'])
 })
 
 test('the ring buffer drops the oldest bytes and keeps offsets accountable', async () => {

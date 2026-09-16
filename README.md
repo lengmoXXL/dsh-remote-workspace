@@ -20,7 +20,7 @@ English | [中文](README.zh.md)
 ## Install
 
 ```sh
-dsh plugin --profile web add https://github.com/lengmoXXL/dsh-remote-workspace/releases/download/plugin-v0.1.4/dsh-remote-workspace-0.1.4.tgz
+dsh plugin --profile web add https://github.com/lengmoXXL/dsh-remote-workspace/releases/download/plugin-v0.1.5/dsh-remote-workspace-0.1.5.tgz
 ```
 
 The plugin takes over services the base profile provides, and the host plane holds one implementation per service. Add
@@ -72,5 +72,6 @@ switching Session, or collapsing the sidebar leaves it running.
 | `shell` | unset | Program the Sidebar terminal runs; unset uses the machine's own login shell. |
 | `shellArgs` | `['-l']` | Arguments after `shell`; ignored while `shell` is unset. |
 | `graceMs` | `3000` | How long a closing terminal is given to exit, in milliseconds. |
+| `detachGraceMs` | `0` | Safety valve: how long a terminal whose socket went away (a reload, a dropped connection) is kept for a reattach, in milliseconds. `0` — the default — keeps it for as long as its process lives. |
 
 MIT

@@ -9,10 +9,11 @@
  * - **binary** carries raw terminal bytes, host to browser only, so a shell's
  *   output is not base64-encoded and re-decoded once per chunk.
  *
- * The socket's whole life is one terminal: the browser keeps it open while the
- * tab exists, and the host releases the PTY — from the registry the model's
- * terminal tool reads — when it closes. There is no reattach protocol because
- * there is nothing to reattach to.
+ * A socket's life is one *view* of a terminal, not the terminal itself. A
+ * socket that closes without a `close` frame detaches: the host keeps the PTY
+ * and its retained output so a reload or a dropped connection can `attach`
+ * back to the same shell, which lives for as long as its process does. The
+ * `close` frame is what a tab teardown sends, and it ends the shell at once.
  *
  * @module dsh-remote-workspace/terminal/shared/wire
  */
@@ -31,6 +32,29 @@ export interface OpenFrame {
   readonly rows: number
 }
 
+/**
+ * Reattach to a terminal this browser already knows by id.
+ *
+ * A socket that reconnects after a reload or a dropped connection uses this
+ * instead of {@link OpenFrame}: the host replays the retained output tail to
+ * this socket and keeps the same shell. An entry that is gone answers with an
+ * {@link ErrorFrame}, and the browser then opens a fresh terminal.
+ */
+export interface AttachFrame {
+  readonly t: 'attach'
+  /** The registry id a previous {@link ReadyFrame} assigned. */
+  readonly id: string
+  /** Column count, from the browser's own measurement. */
+  readonly cols: number
+  /** Row count, from the browser's own measurement. */
+  readonly rows: number
+}
+
+/** End the terminal now; what a tab teardown sends. */
+export interface CloseFrame {
+  readonly t: 'close'
+}
+
 /** Deliver keystrokes. */
 export interface InputFrame {
   readonly t: 'input'
@@ -46,7 +70,7 @@ export interface ResizeFrame {
 }
 
 /** Every frame the browser sends. */
-export type ClientFrame = OpenFrame | InputFrame | ResizeFrame
+export type ClientFrame = OpenFrame | AttachFrame | CloseFrame | InputFrame | ResizeFrame
 
 /** The terminal is live; the browser may now write to it. */
 export interface ReadyFrame {

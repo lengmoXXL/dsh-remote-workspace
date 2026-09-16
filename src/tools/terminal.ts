@@ -84,7 +84,7 @@ const TERMINAL_VALUE_SCHEMA = {
               cwd: { type: 'string', required: true },
               machine: { type: 'string', required: true },
               pid: { type: 'number', required: true },
-              state: { type: 'string', required: true, enum: ['running', 'exited'] },
+              state: { type: 'string', required: true, enum: ['running', 'detached', 'exited'] },
               cols: { type: 'number', required: true },
               rows: { type: 'number', required: true },
             },
@@ -207,7 +207,7 @@ export function registerTerminalTool(ctx: Context, registry: TerminalRegistry): 
 
   tools.register(defineTool({
     name: 'terminal',
-    description: 'Work with the terminals a person has open in the sidebar: read their output, type into them, send named keys, and wait for output. This is one terminal tool with an "action"; the other parameters apply only to the actions named in their descriptions. It never opens a terminal — a person opening a sidebar tab does that — and it never closes one: a terminal belongs to its tab, so a tab the person closed leaves no terminal to address. Use "list" to see what is open, "read" for recent output, "send" to run a command ("enter" defaults to true), "keys" for named keys such as ctrl+c, and "wait" to search the recent output and settle when it matches or the command exits.',
+    description: 'Work with the terminals a person has open in the sidebar: read their output, type into them, send named keys, and wait for output. This is one terminal tool with an "action"; the other parameters apply only to the actions named in their descriptions. It never opens a terminal — a person opening a sidebar tab does that — and it never closes one: a terminal belongs to its tab, so a tab the person closed leaves no terminal to address. A terminal whose tab lost its connection without closing is "detached": it stays addressable until it is closed, its process exits, or its session ends. Use "list" to see what is open, "read" for recent output, "send" to run a command ("enter" defaults to true), "keys" for named keys such as ctrl+c, and "wait" to search the recent output and settle when it matches or the command exits.',
     parameters: {
       action: {
         type: 'string',

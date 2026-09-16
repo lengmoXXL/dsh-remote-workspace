@@ -24,8 +24,9 @@
  * shell.
  *
  * That shell is also what the plugin's one model-facing terminal tool drives,
- * so a person and the model share one handle: the tab owns the shell's life,
- * and the tool can read, type into, and wait on it while the tab is open.
+ * so a person and the model share one handle: closing the tab ends the shell,
+ * a socket that merely drops detaches it, and the tool can read, type into, and
+ * wait on it while its process lives.
  *
  * @module dsh-remote-workspace
  */
@@ -162,6 +163,16 @@ export interface Config {
   shellArgs?: string[]
   /** TERM-to-KILL grace for one terminal session, in milliseconds. Defaults to 3000. */
   graceMs?: number
+  /**
+   * Safety valve: how long a terminal whose browser socket went away is kept,
+   * in milliseconds. Unset or `0` — the default — keeps it for as long as its
+   * process lives, because a browser's absence is not the shell's business.
+   *
+   * A positive value releases a terminal nobody has come back for that long
+   * after the last socket left. A tab that is closed ends its terminal
+   * immediately regardless, because the browser sends `close` first.
+   */
+  detachGraceMs?: number
 }
 
 /** Validated plugin config. */
@@ -174,6 +185,7 @@ export const Config: z<Config> = z.object({
   shell: z.string(),
   shellArgs: z.array(z.string()),
   graceMs: z.number().step(1).min(1),
+  detachGraceMs: z.number().step(1).min(0),
 })
 
 /** Root managed worktrees are cut under when the config names none. */
@@ -343,6 +355,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     // every full-screen program reads to decide what it may draw.
     env: { TERM: 'xterm-256color', COLORTERM: 'truecolor' },
     graceMs: config.graceMs ?? 3000,
+    detachGraceMs: config.detachGraceMs ?? 0,
   }
 
   // The registry is the one handle on the shells a person's tabs have open: the

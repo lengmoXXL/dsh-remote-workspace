@@ -142,6 +142,22 @@ test('list answers an empty list rather than failing when nothing is open', asyn
   assert.deepEqual(value.terminals, [])
 })
 
+test('list reports a detached terminal instead of hiding it', async () => {
+  const { tools, registry, exec } = compose()
+  await registry.open('s1', '/w/a', { cols: 80, rows: 24 })
+  // What the socket closing does: the terminal stays, nobody is watching.
+  const sink = { output() {}, exit() {}, fail() {} }
+  registry.attach('t1', sink)
+  registry.detach('t1', sink)
+
+  const args = { action: 'list' }
+  const value = valueOf<{ terminals: readonly { id: string; state: string }[] }>(
+    await soleTool(tools).execute(args, exec('s1')),
+  )
+  assert.deepEqual(value.terminals.map(terminal => [terminal.id, terminal.state]), [['t1', 'detached']])
+  assert.equal(renderText(soleTool(tools), args, value), 't1 (Terminal 1) detached · /w/a · Local')
+})
+
 test('a Session sees only its own terminals, whatever id it passes', async () => {
   const { tools, registry, exec } = compose()
   await registry.open('s2', '/w/b', { cols: 80, rows: 24 })

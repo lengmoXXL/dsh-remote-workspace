@@ -33,6 +33,16 @@ export interface FirefoxPage {
    */
   evaluate<T = unknown>(expression: string): Promise<T>
   /**
+   * Type text into the focused element as real key events.
+   * @param text - the characters to type.
+   */
+  type(text: string): Promise<void>
+  /**
+   * Press one named key as a real key event.
+   * @param key - a WebDriver key name such as `Enter` or `Tab`.
+   */
+  press(key: string): Promise<void>
+  /**
    * Save a PNG of the current viewport.
    * @param path - absolute file to write.
    */
@@ -163,6 +173,23 @@ function page(
       return unwrap(reply.result) as T
     },
 
+    async type(text) {
+      if (text === '') return
+      const actions: KeyAction[] = []
+      for (const character of text) {
+        actions.push({ type: 'keyDown', value: character }, { type: 'keyUp', value: character })
+      }
+      await keys(connection, context, actions)
+    },
+
+    async press(key) {
+      const value = NAMED_KEYS[key] ?? key
+      await keys(connection, context, [
+        { type: 'keyDown', value },
+        { type: 'keyUp', value },
+      ])
+    },
+
     async screenshot(path) {
       const reply = await connection.send<{ data: string }>('browsingContext.captureScreenshot', { context })
       await writeFile(path, Buffer.from(reply.data, 'base64'))
@@ -181,6 +208,31 @@ function page(
       await rm(profile, { recursive: true, force: true })
     },
   }
+}
+
+/** One WebDriver key action as BiDi carries it. */
+interface KeyAction {
+  readonly type: 'keyDown' | 'keyUp'
+  readonly value: string
+}
+
+/** The WebDriver key value for the named keys this suite presses. */
+const NAMED_KEYS: Readonly<Record<string, string>> = {
+  Enter: '\uE007',
+  Tab: '\uE004',
+}
+
+/**
+ * Dispatch key actions to the focused element through BiDi.
+ * @param connection - the session.
+ * @param context - the browsing context whose focused element receives them.
+ * @param actions - the key down/up pairs, in order.
+ */
+async function keys(connection: Connection, context: string, actions: readonly KeyAction[]): Promise<void> {
+  await connection.send('input.performActions', {
+    context,
+    actions: [{ type: 'key', id: 'keyboard', actions }],
+  })
 }
 
 /** One value as WebDriver BiDi serializes it. */

@@ -13,9 +13,9 @@
  *   not covered by the browser's same-origin policy, so without that fence any
  *   page in the browser could open a shell on this host.
  *
- * Unloading the plugin terminates every live socket; each socket's own close
- * handler then releases its registry entry, and the registry's own disposal
- * covers the terminals a Session's end did not.
+ * Unloading the plugin terminates every live socket; each socket's close
+ * handler then detaches its registry entry, and the registry's own disposal
+ * releases every terminal that would otherwise outlive the plugin.
  *
  * @module dsh-remote-workspace/terminal/host/socket
  */

@@ -49,6 +49,7 @@ import {
 } from './dom.ts'
 import { launchFirefox, type FirefoxPage } from './firefox.ts'
 import { startInstance, type E2eInstance } from './instance.ts'
+import { SOCKET_PATH } from '../../src/terminal/shared/wire.ts'
 
 const run = promisify(execFile)
 
@@ -289,6 +290,9 @@ const TERMINAL_TITLE = /^Terminal \d+$/
 /** Page-side reader for the right Sidebar's tab chip titles. */
 const CHIP_TITLES = `[...document.querySelectorAll('[data-dockkit-tab-title]')].map(el => (el.textContent ?? '').trim())`
 
+/** Page-side reader for the plugin client's per-Session terminal memory. */
+const TERMINAL_MEMORY = `JSON.parse(localStorage.getItem('dsh-remote-workspace.terminal') ?? '{}')`
+
 /**
  * Open one Workspace as a Session, which is the only place a terminal can live.
  *
@@ -388,6 +392,85 @@ async function closeTabByTitle(page: FirefoxPage, title: string): Promise<void> 
     `!${CHIP_TITLES}.some(candidate => candidate === ${JSON.stringify(title)})`,
     'the terminal chip to close',
   )
+}
+
+/** Page-side reader for the mounted terminal's visible screen text. */
+const TERMINAL_TEXT = `(() => {
+  const rows = document.querySelector('.xterm-rows')
+  return rows === null ? '' : rows.innerText
+})()`
+
+/**
+ * Type literal text into the mounted terminal, as a person would.
+ *
+ * The terminal focuses its hidden helper textarea when it mounts; focusing it
+ * again makes the keystrokes land there rather than on whatever the shell
+ * focused last.
+ * @param page - the page to act on.
+ * @param text - the characters to type, no newlines.
+ */
+async function typeInTerminal(page: FirefoxPage, text: string): Promise<void> {
+  await page.evaluate(`(() => {
+    const field = document.querySelector('.xterm-helper-textarea')
+    if (field !== null) field.focus()
+    return field !== null
+  })()`)
+  await page.type(text)
+}
+
+/**
+ * Attach to one terminal by id the way the plugin's client does, then read the
+ * marker back through the shell.
+ *
+ * The page's own WebSocket takes the exact host path a reopened tab takes:
+ * attach replays the retained output and the same shell answers. A case that
+ * expects the attach to fail reads the error instead, which is how a closed
+ * tab's terminal is proven gone.
+ * @param page - the page to act on.
+ * @param id - the registry id to attach to.
+ * @returns the ready frame, everything the socket received, and any error.
+ */
+async function attachAndRead(page: FirefoxPage, id: string): Promise<{
+  readonly ready: { readonly id: string; readonly label: string; readonly cwd: string } | null
+  readonly output: string
+  readonly error: string | null
+}> {
+  return await page.evaluate(`
+    new Promise((resolve) => {
+      const socket = new WebSocket('ws://' + location.host + ${JSON.stringify(SOCKET_PATH)})
+      socket.binaryType = 'arraybuffer'
+      const decoder = new TextDecoder()
+      let output = ''
+      let ready = null
+      let asked = false
+      const finish = (error) => {
+        clearTimeout(timer)
+        try { socket.close() } catch {}
+        resolve({ ready, output, error: error ?? null })
+      }
+      const timer = setTimeout(() => finish('timed out waiting for the marker'), 30000)
+      socket.addEventListener('open', () => {
+        socket.send(JSON.stringify({ t: 'attach', id: ${JSON.stringify(id)}, cols: 80, rows: 24 }))
+      })
+      socket.addEventListener('message', (event) => {
+        if (event.data instanceof ArrayBuffer) {
+          output += decoder.decode(new Uint8Array(event.data))
+          if (asked && output.includes('probe=42')) finish(null)
+          return
+        }
+        let frame
+        try { frame = JSON.parse(String(event.data)) } catch { return }
+        if (frame.t === 'ready') {
+          ready = frame
+          asked = true
+          socket.send(JSON.stringify({ t: 'input', data: 'echo probe=$DRW_PROBE\\r' }))
+          return
+        }
+        if (frame.t === 'error') finish(frame.message)
+      })
+      socket.addEventListener('close', () => finish('the socket closed before the marker arrived'))
+    })
+  `)
 }
 
 test('a remote worktree is created and removed through the browser', { timeout: 300_000 }, async () => {
@@ -761,16 +844,71 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     // here, the way an operator would, so the terminal has one to belong to.
     await openWorkspaceSession(page, 'here · local-repo · Local')
 
-    // A terminal tab owns its shell, and the model can only address one that is
-    // open. The chip names the registry id the agent uses; closing the tab
-    // releases that terminal, so reopening produces a different one rather than
-    // the shell the closed tab left behind.
+    // Closing a tab still ends its shell: the client sends `close` on teardown,
+    // so reopening produces a different terminal rather than the one the closed
+    // tab left behind.
     const firstTerminal = await openTerminal(page)
     await shot('11-terminal-open')
+    const firstId = `t${firstTerminal.replace(/\D+/g, '')}`
     await closeTabByTitle(page, firstTerminal)
+    // Closing the tab sends `close`, so the terminal is gone at once — not left
+    // detached the way a dropped socket is.
+    const closedProbe = await attachAndRead(page, firstId)
+    assert.equal(closedProbe.ready, null, 'a closed tab left a terminal to reattach to')
+    assert.match(String(closedProbe.error), /not open|exited/)
     const secondTerminal = await openTerminal(page)
     assert.notEqual(secondTerminal, firstTerminal, 'a reopened terminal is a new terminal')
     await shot('12-terminal-reopened')
+
+    // The acceptance case: set a marker in the live terminal, reload the page
+    // (which drops the socket with no `close`), then reopen a terminal tab the
+    // way a person does. The shell restores no sidebar tab, so only the
+    // plugin's own per-Session memory can bring the new tab back to this shell.
+    const terminalId = `t${secondTerminal.replace(/\D+/g, '')}`
+    await typeInTerminal(page, 'export DRW_PROBE=42')
+    await page.press('Enter')
+    await typeInTerminal(page, 'echo probe=$DRW_PROBE')
+    await page.press('Enter')
+    await waitFor(page, `${TERMINAL_TEXT}.includes('probe=42')`, 'the marker in the terminal')
+    const memoryBefore = await page.evaluate<Record<string, string>>(TERMINAL_MEMORY)
+    assert.deepEqual(
+      Object.values(memoryBefore),
+      [terminalId],
+      'the session remembered the live terminal before the reload',
+    )
+    await shot('13-terminal-marker')
+
+    await page.navigate(instance.pageUrl)
+    await waitFor(page, 'document.readyState === "complete"', 'the document after the reload')
+    await waitFor(page, 'document.body.innerText.length > 40', 'the shell after the reload')
+    await clearShellDialogs(page)
+    await shot('14-after-reload')
+    console.log(
+      `reload: terminal before=${JSON.stringify(secondTerminal)} (${terminalId}); `
+      + `remembered=${JSON.stringify(memoryBefore)}; `
+      + `tab chips after=${JSON.stringify(await page.evaluate<readonly string[]>(CHIP_TITLES))}`,
+    )
+
+    // Reopen the Session the person had — the workspace's own new-session
+    // control reuses the blank Session this run started — and then reopen a
+    // terminal tab from the strip's add control.
+    await openWorkspaceSession(page, 'here · local-repo · Local')
+    const restored = await openTerminal(page)
+    await shot('14b-reattached-terminal')
+
+    assert.equal(restored, secondTerminal, 'the reopened tab attached to the same terminal')
+    assert.deepEqual(
+      await page.evaluate<Record<string, string>>(TERMINAL_MEMORY),
+      memoryBefore,
+      'the same Session still remembers the same terminal id',
+    )
+    // The replayed scrollback is the earlier output; a fresh command proves the
+    // shell behind it is the same live process.
+    await waitFor(page, `${TERMINAL_TEXT}.includes('export DRW_PROBE=42')`, 'the earlier output to be replayed')
+    await typeInTerminal(page, 'echo again=$DRW_PROBE')
+    await page.press('Enter')
+    await waitFor(page, `${TERMINAL_TEXT}.includes('again=42')`, 'the marker in the reattached shell')
+    await shot('14c-reattached-live')
   } catch (error) {
     failure = error
     if (browser !== undefined && deployment !== undefined) {
