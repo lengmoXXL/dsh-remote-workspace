@@ -24,9 +24,9 @@
  * shell.
  *
  * That shell is also what the plugin's one model-facing terminal tool drives,
- * so a person and the model share one handle: closing the tab ends the shell,
- * a socket that merely drops detaches it, and the tool can read, type into, and
- * wait on it while its process lives.
+ * so a person and the model share one handle: closing the tab only detaches the
+ * shell, an explicit end or the process exiting ends it, and the tool can read,
+ * type into, and wait on it while its process lives.
  *
  * @module dsh-remote-workspace
  */

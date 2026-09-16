@@ -913,20 +913,70 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     // here, the way an operator would, so the terminal has one to belong to.
     await openWorkspaceSession(page, 'here · local-repo · Local')
 
-    // Closing a tab still ends its shell: the client sends `close` on teardown,
-    // so reopening produces a different terminal rather than the one the closed
-    // tab left behind. The chooser is how a terminal opens at all, so both are
-    // opened through it.
+    // Closing a tab no longer ends its shell: teardown only closes the socket,
+    // so the host detaches the terminal and the chooser lists it as detached.
+    // Choosing it comes back to the same shell, marker and earlier output
+    // included.
     const firstTerminal = await openTerminal(page, 'new')
     await shot('11-terminal-open')
     const firstId = `t${firstTerminal.replace(/\D+/g, '')}`
+    await typeInTerminal(page, 'export DRW_TAB_PROBE=7')
+    await page.press('Enter')
+    await typeInTerminal(page, 'echo tabprobe=$DRW_TAB_PROBE')
+    await page.press('Enter')
+    await waitFor(page, `${TERMINAL_TEXT}.includes('tabprobe=7')`, 'the marker before the tab closes')
     await closeTabByTitle(page, firstTerminal)
-    // Closing the tab sends `close`, so the terminal is gone at once — not left
-    // detached the way a dropped socket is.
-    const closedProbe = await attachAndRead(page, firstId)
-    assert.equal(closedProbe.ready, null, 'a closed tab left a terminal to reattach to')
-    assert.match(String(closedProbe.error), /not open|exited/)
-    const secondTerminal = await openTerminal(page, 'new')
+
+    // The tab is gone, the shell is not: the chooser offers it detached.
+    await openTerminalChooser(page)
+    await clearShellDialogs(page)
+    await waitFor(
+      page,
+      `document.querySelector('[data-terminal-choice="${firstId}"]') !== null`,
+      'the shell the closed tab left detached',
+    )
+    await waitFor(
+      page,
+      `(${pickerState(firstId)}) === 'detached'`,
+      'the host to report the closed tab shell detached',
+    )
+    await shot('12-tab-closed-detached')
+
+    // Choosing it returns to the same shell: same chip title, the earlier
+    // output replayed, and the marker it exported still set.
+    await page.evaluate(`document.querySelector('[data-terminal-choice="${firstId}"]').click()`)
+    const restoredFirst = await waitForTerminalChip(page)
+    assert.equal(restoredFirst, firstTerminal, 'the chosen terminal is the shell the closed tab left behind')
+    await waitFor(page, `${TERMINAL_TEXT}.includes('tabprobe=7')`, 'the earlier output to be replayed')
+    await typeInTerminal(page, 'echo aftertab=$DRW_TAB_PROBE')
+    await page.press('Enter')
+    await waitFor(page, `${TERMINAL_TEXT}.includes('aftertab=7')`, 'the marker in the shell a closed tab left')
+    await shot('12b-reattached-after-tab-close')
+
+    // Ending it is explicit now: End terminal sends `close` through the socket
+    // the panel holds, the body falls back to the chooser, and the shell is gone
+    // rather than detached.
+    await clearShellDialogs(page)
+    await page.evaluate(`document.querySelector('[data-terminal-end]').click()`)
+    await waitFor(
+      page,
+      `document.querySelector('[data-terminal-picker]') !== null`,
+      'the chooser after ending the terminal',
+    )
+    await waitFor(
+      page,
+      `document.querySelector('[data-terminal-choice="${firstId}"]') === null`,
+      'the ended terminal to leave the chooser',
+    )
+    const endedProbe = await attachAndRead(page, firstId)
+    assert.equal(endedProbe.ready, null, 'End terminal left a shell to reattach to')
+    assert.match(String(endedProbe.error), /not open|exited/)
+    await shot('12c-terminal-ended')
+
+    // The tab stayed open on the shell-less chooser, so the New terminal entry
+    // it now shows opens the next shell.
+    await page.evaluate(`document.querySelector('[data-terminal-new]').click()`)
+    const secondTerminal = await waitForTerminalChip(page)
     assert.notEqual(secondTerminal, firstTerminal, 'a reopened terminal is a new terminal')
     await shot('12-terminal-reopened')
 

@@ -6,7 +6,7 @@
  * mounts and unmounts this component goes through every time the strip changes
  * tab. What is left here is the frame — the measured screen and the status line
  * — plus the two things only a live body can do: measure, and offer a restart
- * once the shell is gone.
+ * once the shell is gone, or an explicit end through the socket it holds.
  *
  * A tab with no chosen shell yet draws the chooser instead: the entry opened
  * this page, and a shell exists only once somebody says which one. The choice
@@ -23,6 +23,7 @@ import type { TerminalPanelFace } from './index.ts'
 import type { TerminalKey, TerminalNamespace } from './locales.ts'
 import {
   chooseTerminal,
+  endTerminal,
   mountTerminal,
   restartTerminal,
   subscribeTerminalTargets,
@@ -87,6 +88,15 @@ export function TerminalBody({ useTabInfo, sessionId, list, close, t }: Terminal
   }
 
   const gone = state.kind === 'ended' || state.kind === 'failed' || state.kind === 'closed'
+  // A shell still on the host can be ended; one that exited or never opened
+  // has nothing left to end and offers a restart instead.
+  const endable = state.kind === 'opening' || state.kind === 'live' || state.kind === 'closed'
+  const end = (): void => {
+    const stranded = endTerminal(tab.id)
+    // A socket that had already dropped could not carry the frame, and the
+    // shell is still addressable, so the chooser's own route ends it.
+    if (stranded !== undefined) void close(stranded).catch(() => undefined)
+  }
   return (
     <div className={css.pane}>
       <div className={css.screen} ref={screen} />
@@ -94,6 +104,20 @@ export function TerminalBody({ useTabInfo, sessionId, list, close, t }: Terminal
         <span className={css.path} title={state.kind === 'live' ? state.cwd : undefined}>
           {statusText(state, t)}
         </span>
+        {endable
+          ? (
+            <Button
+              className={css.action}
+              size="sm"
+              variant="ghost"
+              data-terminal-end
+              title={t('action.end')}
+              onClick={end}
+            >
+              {t('action.end')}
+            </Button>
+          )
+          : null}
         {state.kind === 'live' && state.fixedSize
           ? <span className={css.note}>{t('note.fixedSize')}</span>
           : null}

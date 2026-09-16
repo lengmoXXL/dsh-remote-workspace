@@ -162,7 +162,7 @@ test('a terminal opened for a Session is driven by the tool and seen by its sock
   assert.deepEqual(registry.listFor(SESSION), [])
 })
 
-test('the tool cannot address a terminal once its tab released it', async (t) => {
+test('the tool cannot address a terminal once an explicit end released it', async (t) => {
   if (skipWithoutPty(t)) return
   const { registry, tools } = compose()
   const tool = tools[0]!
@@ -170,8 +170,8 @@ test('the tool cannot address a terminal once its tab released it', async (t) =>
   const entry = await registry.open(SESSION, anchorRoot, { cols: 80, rows: 24 })
   await registry.kill(entry.id)
 
-  // This is the browser closing the tab: the shell ends and the model loses the
-  // handle, rather than reaching a shell nothing is showing.
+  // This is the panel's End terminal or the chooser's close: the shell ends and
+  // the model loses the handle, rather than reaching a shell nothing is showing.
   await assert.rejects(
     tool.execute({ action: 'read', terminal: entry.id }, exec(new AbortController().signal)),
     /no terminal .* is open in this session/,

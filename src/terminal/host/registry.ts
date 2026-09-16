@@ -5,9 +5,9 @@
  * A tab owns its shell, but the socket is only a view of it. The socket closing
  * detaches: the terminal stays in the table, its output keeps filling the ring
  * buffer, and the model's tool can still address it for as long as the process
- * lives. An explicit `close` from the tab, the process exiting, the owning
- * Session ending, or an optional detach valve releases it; nobody watching is
- * not by itself a reason to end a shell.
+ * lives. An explicit end — the panel's `close` frame or the chooser's close
+ * route — the process exiting, the owning Session ending, or an optional detach
+ * valve releases it; nobody watching is not by itself a reason to end a shell.
  *
  * The table exists for the model. The sidebar terminal never needs to look up
  * its own shell, but the model-facing terminal tool must find one that a

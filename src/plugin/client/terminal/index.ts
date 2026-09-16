@@ -13,7 +13,7 @@
  * read, and the entries are registered once rather than per shell. The body
  * therefore asks through its own chooser, which reads the host's terminal table
  * over this plugin's management route: the same table the agent's terminal tool
- * addresses, so a shell a reload detached from its tab is still offered — and
+ * addresses, so a shell a reload or a closed tab detached is still offered — and
  * can be closed — instead of living on invisibly.
  *
  * Every Harness import here is `import type`: the browser bundle shares the

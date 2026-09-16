@@ -37,6 +37,7 @@ export const zh = {
 
   'note.fixedSize': '这台机器上的终端不支持调整大小',
 
+  'action.end': '结束终端',
   'action.restart': '重新打开',
 
   loading: '正在读取…',
@@ -72,6 +73,7 @@ export const en = {
 
   'note.fixedSize': 'Terminals on this machine cannot be resized',
 
+  'action.end': 'End terminal',
   'action.restart': 'Restart',
 
   loading: 'Loading…',

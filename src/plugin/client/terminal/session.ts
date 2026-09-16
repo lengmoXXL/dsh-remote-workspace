@@ -8,12 +8,15 @@
  * different tab. Instead the xterm instance, its scrollback, its DOM element,
  * and its socket all live here, the body borrows them for as long as it is
  * mounted, and the record's own abort signal — fired when the tab is closed,
- * not when it is hidden — is what finally tears the entry down. Closing the tab
- * sends the host an explicit `close`, which ends the shell; a socket that drops
- * on its own only detaches the shell, and the id kept here is what reattaches
- * to it. Because the shell restores no tab across a reload, that id is also
- * written to `localStorage` per Session: the chooser lists the shell this page
- * last used first, so coming back to it is one click.
+ * not when it is hidden — is what finally tears the entry down: it closes the
+ * socket, which only detaches the shell, and the id kept here is what
+ * reattaches to it. Because the shell restores no tab across a reload, that id
+ * is also written to `localStorage` per Session: the chooser lists the shell
+ * this page last used first, so coming back to it is one click. Ending a shell
+ * is explicit and is the only thing that forgets the id — {@link endTerminal}
+ * sends the `close` frame through the socket this page holds, the chooser's
+ * close reaches the host route, and a shell that exits or fails to attach has
+ * nothing left to come back to.
  *
  * Which shell a tab shows is decided before its first terminal exists: a tab
  * whose person has not chosen yet is shown the chooser, and {@link chooseTerminal}
@@ -336,9 +339,10 @@ function create(mount: TerminalMount): Entry {
   })
   wire(entry)
 
-  // The record disappearing is the only thing that ends a terminal: hiding the
+  // The record disappearing tears the drawing down, not the shell: hiding the
   // tab, switching Session, or collapsing the column all unmount the body
-  // without aborting this signal.
+  // without aborting this signal, and closing the tab aborts it — the socket
+  // closes, the host detaches, and the shell keeps running.
   mount.signal.addEventListener('abort', () => {
     dispose(mount.tabId)
   }, { once: true })
@@ -419,7 +423,13 @@ function wire(entry: Entry): void {
   })
 }
 
-/** Release one terminal: its shell, its socket, and its scrollback. */
+/**
+ * Let this page's terminal go: its socket and its scrollback, not its shell.
+ *
+ * The socket close is what detaches: the host keeps the PTY and its retained
+ * output, so the id is still remembered for a reattach. Ending the shell is
+ * explicit — {@link endTerminal} — or the process doing it on its own.
+ */
 function dispose(tabId: string): void {
   const entry = entries.get(tabId)
   // The tab is gone whether or not a shell ever existed for it; a choice made
@@ -427,15 +437,38 @@ function dispose(tabId: string): void {
   targets.delete(tabId)
   if (entry === undefined) return
   entries.delete(tabId)
-  forget(entry.sessionId, entry.id)
   emitLabels()
   entry.observer.disconnect()
-  // A tab that closes ends its shell; the host reads this frame as a teardown
-  // rather than the disconnect a dropped socket looks like.
-  send(entry, { t: 'close' })
-  entry.socket.close(1000, 'closed')
+  // No `close` frame: closing the socket only detaches, and the host keeps the
+  // shell for as long as its process lives.
+  entry.socket.close(1000, 'detached')
   entry.term.dispose()
   entry.element.remove()
+}
+
+/**
+ * End one tab's terminal now, through the socket this page already holds.
+ *
+ * The `close` frame is what ends a shell at once, rather than leaving it
+ * detached the way a dropped socket does. The tab stays open: clearing its
+ * choice sends the body back to the chooser, where another shell can be picked.
+ * A socket that has already dropped cannot carry the frame, so the registry id
+ * comes back for the caller to end through the host's route.
+ * @param tabId - the Sidebar tab record's id.
+ * @returns the registry id a caller must end over the host route, when the socket could not carry the frame.
+ */
+export function endTerminal(tabId: string): string | undefined {
+  const entry = entries.get(tabId)
+  let stranded: string | undefined
+  if (entry?.id !== undefined) {
+    forget(entry.sessionId, entry.id)
+    if (entry.socket.readyState === WebSocket.OPEN) send(entry, { t: 'close' })
+    else stranded = entry.id
+  }
+  dispose(tabId)
+  // The choice is gone, so every body on this tab draws the chooser again.
+  for (const listener of targetListeners) listener()
+  return stranded
 }
 
 /**

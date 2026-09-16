@@ -11,9 +11,10 @@
  *
  * A socket's life is one *view* of a terminal, not the terminal itself. A
  * socket that closes without a `close` frame detaches: the host keeps the PTY
- * and its retained output so a reload or a dropped connection can `attach`
- * back to the same shell, which lives for as long as its process does. The
- * `close` frame is what a tab teardown sends, and it ends the shell at once.
+ * and its retained output so a reload, a closed tab, or a dropped connection
+ * can `attach` back to the same shell, which lives for as long as its process
+ * does. The `close` frame is what an explicit end sends — the panel's **End
+ * terminal**, or the chooser's close — and it ends the shell at once.
  *
  * @module dsh-remote-workspace/terminal/shared/wire
  */
@@ -50,7 +51,7 @@ export interface AttachFrame {
   readonly rows: number
 }
 
-/** End the terminal now; what a tab teardown sends. */
+/** End the terminal now; what an explicit end sends. */
 export interface CloseFrame {
   readonly t: 'close'
 }

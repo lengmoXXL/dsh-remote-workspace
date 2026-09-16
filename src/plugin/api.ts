@@ -482,7 +482,7 @@ async function handleWorktrees(
  * The list is the registry's own projection for one Session, so what the panel
  * offers is exactly what the agent's terminal tool would address — including a
  * detached shell whose tab a reload took away. Closing is the registry's kill
- * path: it ends the shell a tab or a chooser names, and an id nobody holds is a
+ * path: it ends the shell an explicit end names, and an id nobody holds is a
  * client error rather than a silent success.
  * @param request - the normalized request.
  * @param parts - path segments below `/terminals`.

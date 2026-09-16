@@ -9,11 +9,12 @@
  *
  * A tab owns its shell, but the socket is only a view of it. A socket that
  * closes without a `close` frame detaches: the registry keeps the PTY and its
- * retained output, so a reload or a dropped connection can `attach` back and
- * see the same shell for as long as it lives. The `close` frame is what a tab
- * teardown sends, and it ends the terminal at once. A shell whose process exits
- * still closes its socket and is released, and a Session ending releases its
- * terminals through the registry's own hook.
+ * retained output, so a reload, a closed tab, or a dropped connection can
+ * `attach` back and see the same shell for as long as it lives. The `close`
+ * frame is what an explicit end sends — the panel's End terminal, or the
+ * chooser's close — and it ends the terminal at once. A shell whose process
+ * exits still closes its socket and is released, and a Session ending releases
+ * its terminals through the registry's own hook.
  *
  * Output is paced one chunk at a time through the sink the registry calls: a
  * command that floods the terminal pauses the PTY's output stream until the
@@ -120,7 +121,7 @@ export function attachTerminal(ctx: Context, registry: TerminalRegistry, socket:
     if (current !== undefined) registry.detach(current, sink)
   }
 
-  /** The tab closed: end its shell now instead of leaving it detached. */
+  /** An explicit end: end the shell now instead of leaving it detached. */
   const endNow = (): void => {
     if (closed) return
     closed = true
