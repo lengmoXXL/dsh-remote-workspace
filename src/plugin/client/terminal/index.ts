@@ -33,7 +33,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 // Type-only: pulls the tab registry merge (ctx.sidebarRightTabs) and its seats.
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
-import type { SidebarRightTabDefinition } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
+import type { SidebarRightTabDefinition, TabId } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
 import { request } from '../api.ts'
 import { en, NS, zh, type TerminalKey } from './locales.ts'
@@ -56,14 +56,18 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 /**
- * What the terminal body reads from the plugin's management routes: the shells
- * this Session already has, and the way to end one no tab holds.
+ * What the terminal body is driven with: the shells this Session already has,
+ * the way to end one no tab holds, and the two column actions the panel offers.
  */
 export interface TerminalPanelFace {
   /** One Session's terminals, as the agent's terminal tool lists them. */
   list(sessionId: string): Promise<readonly TerminalSummary[]>
   /** End one terminal, wherever its tab went. */
   close(id: string): Promise<void>
+  /** Open a shell-less terminal tab beside the one this panel is in. */
+  openAnother(): void
+  /** Bring forward the tab already showing a terminal. */
+  showTab(tabId: string): void
 }
 
 /**
@@ -90,9 +94,15 @@ function terminalDefinition(t: Translate<TerminalKey>): SidebarRightTabDefinitio
 /**
  * Build the panel face over the host routes.
  * @param t - the namespace-bound translate every request failure is read through.
+ * @param openAnother - the column call that adds a terminal tab beside this one.
+ * @param showTab - the column call that brings forward a tab already showing a shell.
  * @returns the face the terminal body drives.
  */
-function panelFace(t: Translate<TerminalKey>): TerminalPanelFace {
+function panelFace(
+  t: Translate<TerminalKey>,
+  openAnother: () => void,
+  showTab: (tabId: string) => void,
+): TerminalPanelFace {
   const failure = (status: number): string => t('requestFailed', { status })
   return {
     async list(sessionId) {
@@ -105,6 +115,8 @@ function panelFace(t: Translate<TerminalKey>): TerminalPanelFace {
     async close(id) {
       await request(failure, `/terminals/${encodeURIComponent(id)}/close`, { method: 'POST' })
     },
+    openAnother,
+    showTab,
   }
 }
 
@@ -122,7 +134,25 @@ export function mountTerminal(ctx: Context): void {
   // Stage two of the type: the body registers under the definition's id. The
   // panel face is injected rather than imported by the body, exactly as the
   // settings section receives its own.
-  const face = panelFace(t)
+  //
+  // A page kind holds one tab per pane, so opening the terminal kind again only
+  // focuses the tab already there. A sibling is therefore opened as a resource
+  // tab — `revealIfOpened: false` is what permits the duplicate — at an address
+  // no other tab shares, and starts shell-less on its own chooser.
+  const face = panelFace(
+    t,
+    () => {
+      // `crypto.randomUUID` needs a secure origin; this only has to be unique.
+      const address = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+      ctx.sidebarRight.openResource(`dsh-resource://terminal/tab/${address}`, {
+        kind: TERMINAL_KIND,
+        revealIfOpened: false,
+      })
+    },
+    // The picker hands back a tab id the kit minted; the panel keeps ids as
+    // opaque strings, so the brand is restored at this one boundary.
+    tabId => { ctx.sidebarRight.focus(tabId as TabId) },
+  )
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register(
     { name: 'sidebar.right.pane.tab', key: TERMINAL_ID, locale: NS, inject: () => face },
     TerminalBody,

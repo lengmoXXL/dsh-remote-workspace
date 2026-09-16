@@ -290,6 +290,13 @@ const TERMINAL_TITLE = /^Terminal \d+$/
 /** Page-side reader for the right Sidebar's tab chip titles. */
 const CHIP_TITLES = `[...document.querySelectorAll('[data-dockkit-tab-title]')].map(el => (el.textContent ?? '').trim())`
 
+/** Page-side reader for the active strip chip's title. */
+const ACTIVE_CHIP_TITLE = `(() => {
+  const chip = [...document.querySelectorAll('[data-dockkit-tab]')]
+    .find(el => el.getAttribute('aria-selected') === 'true')
+  return (chip?.querySelector('[data-dockkit-tab-title]')?.textContent ?? '').trim()
+})()`
+
 /** Page-side reader for the plugin client's per-Session terminal memory. */
 const TERMINAL_MEMORY = `JSON.parse(localStorage.getItem('dsh-remote-workspace.terminal') ?? '{}')`
 
@@ -301,6 +308,11 @@ const PICKER_ROWS = `[...document.querySelectorAll('[data-terminal-choice]')]`
 function pickerState(id: string): string {
   return `document.querySelector('[data-terminal-choice="${id}"]')`
     + `?.getAttribute('data-terminal-state') ?? null`
+}
+
+/** An expression that holds while one chooser row carries its already-open badge. */
+function pickerOpened(id: string): string {
+  return `document.querySelector('[data-terminal-choice="${id}"] [data-terminal-opened]') !== null`
 }
 
 /**
@@ -416,6 +428,17 @@ async function waitForTerminalChip(page: FirefoxPage): Promise<string> {
 }
 
 /**
+ * Wait for the active tab's chip to name the shell the host assigned it.
+ * @param page - the page to act on.
+ * @returns the chip title, which carries the terminal's registry id.
+ */
+async function waitForActiveTerminalChip(page: FirefoxPage): Promise<string> {
+  const titlePattern = JSON.stringify(TERMINAL_TITLE.source)
+  await waitFor(page, `new RegExp(${titlePattern}).test(${ACTIVE_CHIP_TITLE})`, 'the active terminal chip')
+  return await page.evaluate<string>(ACTIVE_CHIP_TITLE)
+}
+
+/**
  * Open one terminal through the chooser.
  *
  * @param page - the page to act on.
@@ -436,6 +459,18 @@ async function openTerminal(page: FirefoxPage, choose: { readonly id: string } |
     await page.evaluate(`${row}.click()`)
   }
   return await waitForTerminalChip(page)
+}
+
+/**
+ * Press the panel's New terminal control, which adds a shell-less tab beside
+ * the one in view and leaves it on its own chooser.
+ * @param page - the page to act on.
+ */
+async function openAnotherTerminal(page: FirefoxPage): Promise<void> {
+  await clearShellDialogs(page)
+  await waitFor(page, `document.querySelector('[data-terminal-newtab]') !== null`, 'the New terminal control')
+  await page.evaluate(`document.querySelector('[data-terminal-newtab]').click()`)
+  await waitFor(page, `document.querySelector('[data-terminal-picker]') !== null`, 'the new tab chooser')
 }
 
 /**
@@ -461,6 +496,23 @@ async function closeTabByTitle(page: FirefoxPage, title: string): Promise<void> 
     `!${CHIP_TITLES}.some(candidate => candidate === ${JSON.stringify(title)})`,
     'the terminal chip to close',
   )
+}
+
+/**
+ * Focus one right-Sidebar tab through its own chip.
+ * @param page - the page to act on.
+ * @param title - the exact chip title to focus.
+ */
+async function clickTabByTitle(page: FirefoxPage, title: string): Promise<void> {
+  const clicked = await page.evaluate<boolean>(`
+    (() => {
+      const chip = [...document.querySelectorAll('[data-dockkit-tab]')].find(el =>
+        (el.querySelector('[data-dockkit-tab-title]')?.textContent ?? '').trim() === ${JSON.stringify(title)})
+      if (chip === null || chip === undefined) return false
+      chip.click()
+      return true
+    })()`)
+  assert.equal(clicked, true, `no chip for the ${title} tab`)
 }
 
 /** Page-side reader for the mounted terminal's visible screen text. */
@@ -1062,6 +1114,163 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     // reused it nor ended it.
     const left = await attachAndRead(page, terminalId)
     assert.equal(left.ready?.id, terminalId, 'the detached terminal outlived the New terminal choice')
+
+    // The panel's own New terminal control is what adds a second tab: the
+    // strip's add control cannot, because a page kind is focused where it is
+    // already open rather than opened twice in one pane. The new tab starts
+    // shell-less, so its chooser still offers the shell behind the first tab.
+    await typeInTerminal(page, 'export DRW_FIRST=5')
+    await page.press('Enter')
+    // Quoted: an unquoted `[...]` is a zsh glob, and its "no matches found"
+    // error would carry the marker whether or not the variable is set.
+    await typeInTerminal(page, 'echo "first=[$DRW_FIRST]"')
+    await page.press('Enter')
+    await waitFor(page, `${TERMINAL_TEXT}.includes('first=[5]')`, 'the marker in the terminal already open')
+    const freshId = `t${fresh.replace(/\D+/g, '')}`
+    assert.deepEqual(
+      await page.evaluate<readonly string[]>(CHIP_TITLES),
+      [fresh],
+      'one terminal tab before the New terminal control',
+    )
+
+    await openAnotherTerminal(page)
+    const chips = await page.evaluate<readonly string[]>(CHIP_TITLES)
+    assert.equal(chips.length, 2, 'the New terminal control added a second tab')
+    assert.ok(chips.includes(fresh), 'the first terminal tab is still there')
+    await clearShellDialogs(page)
+    await waitFor(
+      page,
+      `document.querySelector('[data-terminal-choice="${freshId}"]') !== null`,
+      'the first shell in the new tab chooser',
+    )
+    assert.equal(
+      await page.evaluate<string>(pickerState(freshId)),
+      'running',
+      'the first tab shell is still running beside the new tab',
+    )
+    await shot('16-second-tab-chooser')
+
+    // Picking a fresh shell makes the sibling live; it is a different shell
+    // with a different label and its own id.
+    await clearShellDialogs(page)
+    await page.evaluate(`document.querySelector('[data-terminal-new]').click()`)
+    const sibling = await waitForActiveTerminalChip(page)
+    const siblingId = `t${sibling.replace(/\D+/g, '')}`
+    assert.notEqual(sibling, fresh, 'the second tab names its own shell')
+    assert.notEqual(siblingId, freshId, 'the second tab owns a distinct shell')
+    await shot('16-second-terminal')
+
+    // The two shells share nothing: neither has the marker exported in the
+    // other, and the first still answers with its own.
+    await typeInTerminal(page, 'echo "first=[$DRW_FIRST]"')
+    await page.press('Enter')
+    await waitFor(page, `${TERMINAL_TEXT}.includes('first=[]')`, 'the sibling to lack the first shell marker')
+    await typeInTerminal(page, 'export DRW_SECOND=6')
+    await page.press('Enter')
+    await typeInTerminal(page, 'echo "second=[$DRW_SECOND]"')
+    await page.press('Enter')
+    await waitFor(page, `${TERMINAL_TEXT}.includes('second=[6]')`, 'the marker in the sibling shell')
+    await shot('16b-second-terminal-live')
+
+    await clickTabByTitle(page, fresh)
+    await waitFor(page, `${TERMINAL_TEXT}.includes('first=[5]')`, 'the first terminal to be shown again')
+    await typeInTerminal(page, 'echo "second=[$DRW_SECOND]"')
+    await page.press('Enter')
+    await waitFor(page, `${TERMINAL_TEXT}.includes('second=[]')`, 'the first shell to lack the sibling marker')
+    await shot('16c-terminals-independent')
+
+    // A shell another tab already draws is marked in the chooser, and picking
+    // it brings that tab forward instead of attaching a second view. A shell no
+    // tab holds still attaches into the tab that is asking.
+    //
+    // The unheld shell is made here rather than borrowed: closing a tab
+    // detaches its shell, and that shell then belongs to no tab.
+    await openAnotherTerminal(page)
+    await clearShellDialogs(page)
+    await page.evaluate(`document.querySelector('[data-terminal-new]').click()`)
+    const looseTitle = await waitForActiveTerminalChip(page)
+    const looseId = `t${looseTitle.replace(/\D+/g, '')}`
+    await typeInTerminal(page, 'export DRW_LOOSE=8')
+    await page.press('Enter')
+    await typeInTerminal(page, 'echo "loose=[$DRW_LOOSE]"')
+    await page.press('Enter')
+    await waitFor(page, `${TERMINAL_TEXT}.includes('loose=[8]')`, 'the marker in the shell about to be released')
+    await closeTabByTitle(page, looseTitle)
+    assert.equal(
+      (await page.evaluate<readonly string[]>(CHIP_TITLES)).length,
+      2,
+      'the tab that released its shell left the two terminals',
+    )
+
+    await openAnotherTerminal(page)
+    assert.equal(
+      (await page.evaluate<readonly string[]>(CHIP_TITLES)).length,
+      3,
+      'the shell-less tab joined the two terminals',
+    )
+    await waitFor(
+      page,
+      `document.querySelector('[data-terminal-choice="${looseId}"]') !== null`,
+      'the released shell in the picker',
+    )
+    assert.equal(await page.evaluate<boolean>(pickerOpened(freshId)), true, 'the first terminal is marked open')
+    assert.equal(await page.evaluate<boolean>(pickerOpened(siblingId)), true, 'the sibling terminal is marked open')
+    assert.equal(await page.evaluate<boolean>(pickerOpened(looseId)), false, 'the released terminal is in no tab')
+    await shot('17-open-in-another-tab')
+
+    // Nothing holds this shell, so it attaches here, in the tab that was empty.
+    await page.evaluate(`document.querySelector('[data-terminal-choice="${looseId}"]').click()`)
+    await waitForActiveTerminalChip(page)
+    await typeInTerminal(page, 'echo "again=[$DRW_LOOSE]"')
+    await page.press('Enter')
+    await waitFor(page, `${TERMINAL_TEXT}.includes('again=[8]')`, 'the released shell attached into the empty tab')
+    assert.equal(
+      (await page.evaluate<readonly string[]>(CHIP_TITLES)).length,
+      3,
+      'attaching a shell no tab held added no tab',
+    )
+    await shot('17b-released-attached-here')
+
+    // Now every shell has a tab. Picking one of them must bring its tab
+    // forward — no new tab, and the other tab keeps its own shell.
+    await openAnotherTerminal(page)
+    await waitFor(
+      page,
+      `document.querySelector('[data-terminal-choice="${freshId}"]') !== null`,
+      'the first terminal in the second picker',
+    )
+    assert.equal(await page.evaluate<boolean>(pickerOpened(freshId)), true, 'the first terminal is marked open')
+    assert.equal(await page.evaluate<boolean>(pickerOpened(siblingId)), true, 'the sibling terminal is marked open')
+    assert.equal(await page.evaluate<boolean>(pickerOpened(looseId)), true, 'the reattached shell is marked open')
+    const tabsBefore = (await page.evaluate<readonly string[]>(CHIP_TITLES)).length
+    assert.equal(tabsBefore, 4, 'the second shell-less tab joined')
+    await shot('17c-all-open')
+
+    await page.evaluate(`document.querySelector('[data-terminal-choice="${freshId}"]').click()`)
+    await waitFor(page, `${ACTIVE_CHIP_TITLE} === ${JSON.stringify(fresh)}`, 'the first terminal tab to come forward')
+    assert.equal(
+      (await page.evaluate<readonly string[]>(CHIP_TITLES)).length,
+      tabsBefore,
+      'focusing an open shell added no tab',
+    )
+    await clickTabByTitle(page, sibling)
+    await waitFor(page, `${TERMINAL_TEXT}.includes('second=[6]')`, 'the sibling tab to still show its own shell')
+    await shot('17d-focused-open-tab')
+
+    // End every shell the Session still lists. A detached zsh writes its
+    // history as it exits, and a run that leaves four of them racing the
+    // scratch directory's removal fails teardown instead of an assertion.
+    await openAnotherTerminal(page)
+    await waitFor(page, `document.querySelector('[data-terminal-close]') !== null`, 'the shells to end')
+    const leftovers = await page.evaluate<readonly string[]>(
+      `[...document.querySelectorAll('[data-terminal-close]')].map(el => el.getAttribute('data-terminal-close'))`,
+    )
+    for (const id of leftovers) {
+      const control = `document.querySelector('[data-terminal-close="${id}"]')`
+      await waitFor(page, `${control} !== null && ${control}.disabled !== true`, `the ${id} end control`)
+      await page.evaluate(`${control}.click()`)
+      await waitFor(page, `${control} === null`, `the ${id} terminal to end`)
+    }
   } catch (error) {
     failure = error
     if (browser !== undefined && deployment !== undefined) {

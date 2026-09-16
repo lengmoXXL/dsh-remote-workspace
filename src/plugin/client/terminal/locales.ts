@@ -33,12 +33,14 @@ export const zh = {
   'picker.description': '连接到一个已在运行的终端，或打开一个新的。',
   'picker.empty': '这个会话里还没有终端。',
   'picker.new': '新终端',
+  'picker.opened': '已打开',
   'picker.close': '关闭终端 {label}',
 
   'note.fixedSize': '这台机器上的终端不支持调整大小',
 
   'action.end': '结束终端',
   'action.restart': '重新打开',
+  'action.newTab': '新建终端',
 
   loading: '正在读取…',
   cancel: '取消',
@@ -69,12 +71,14 @@ export const en = {
   'picker.description': 'Attach to a terminal that is already running, or open a new one.',
   'picker.empty': 'No terminals in this session yet.',
   'picker.new': 'New terminal',
+  'picker.opened': 'Open in another tab',
   'picker.close': 'Close terminal {label}',
 
   'note.fixedSize': 'Terminals on this machine cannot be resized',
 
   'action.end': 'End terminal',
   'action.restart': 'Restart',
+  'action.newTab': 'New terminal',
 
   loading: 'Loading…',
   cancel: 'Cancel',

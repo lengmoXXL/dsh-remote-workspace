@@ -232,6 +232,20 @@ export function terminalLabel(tabId: string): string | null {
   return entries.get(tabId)?.label ?? null
 }
 
+/**
+ * The tab currently showing one terminal, if any.
+ *
+ * Derived from the entries rather than kept as a second map, so it cannot
+ * drift: an entry knows its shell's id from the moment it is created, and a
+ * closed tab or an ended shell takes its entry with it.
+ * @param id - the terminal's registry id.
+ * @returns the tab id drawing that shell, or undefined while no tab does.
+ */
+export function terminalTab(id: string): string | undefined {
+  for (const [tabId, entry] of entries) if (entry.id === id) return tabId
+  return undefined
+}
+
 /** Tell every title seat that a label changed. */
 function emitLabels(): void {
   for (const listener of labelListeners) listener()

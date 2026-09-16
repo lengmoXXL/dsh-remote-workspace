@@ -49,11 +49,29 @@
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
+/* The label line, so the already-open badge can sit beside the name rather
+ * than inside the text that ellipsizes. */
+.head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .label {
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.opened {
+  flex: none;
+  padding: 0 4px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: 4px;
+  color: var(--dsw-alias-label-caption);
+  font: var(--dsw-font-xxs-12);
 }
 
 .meta {

@@ -19,7 +19,7 @@
 ## 安装
 
 ```sh
-dsh plugin --profile web add https://github.com/lengmoXXL/dsh-remote-workspace/releases/download/plugin-v0.1.7/dsh-remote-workspace-0.1.7.tgz
+dsh plugin --profile web add https://github.com/lengmoXXL/dsh-remote-workspace/releases/download/plugin-v0.1.8/dsh-remote-workspace-0.1.8.tgz
 ```
 
 插件要接管 base profile 提供的服务，而 host plane 每项服务只允许一个实现。把这四行加进
@@ -56,7 +56,9 @@ dsh plugin --profile web add https://github.com/lengmoXXL/dsh-remote-workspace/r
 **设置 → 远程工作区。** 用 SSH 目标和 token（任意字符串，是 daemon 的共享密钥）添加机器；`Local` 两项都不需要。
 机器会自动连接，一直连不上的显示**连接**按钮。登记仓库后，用每行的菜单打开、关闭或移除它持有的东西。
 
-**终端。** 右侧边栏的添加控件里有一个**终端**按钮：它会列出该会话在运行的终端，也可以新建一个。关闭标签只是让它脱离：
+**终端。** 右侧边栏的添加控件里有一个**终端**按钮：它会列出该会话在运行的终端，也可以新建一个。面板状态栏里的
+**新建终端**会在当前标签旁再开一个终端标签页，由列表让你接入已有 shell 或新建一个；已被其他标签打开的终端标为
+**已打开**，选中它会切到那个标签。关闭标签只是让它脱离：
 shell 会继续在主机上运行，并在列表里显示为已断开；要结束它，用面板里的**结束终端**，或列表中每行的关闭按钮。隐藏标签、
 切换会话、收起边栏同样不会中断它。
 

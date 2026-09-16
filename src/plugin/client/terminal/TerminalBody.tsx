@@ -62,7 +62,9 @@ export type TerminalBodyProps =
   & InjectFace<TerminalPanelFace>
 
 /** Draw the terminal. */
-export function TerminalBody({ useTabInfo, sessionId, list, close, t }: TerminalBodyProps): ReactNode {
+export function TerminalBody(
+  { useTabInfo, sessionId, list, close, openAnother, showTab, t }: TerminalBodyProps,
+): ReactNode {
   const { tab } = useTabInfo()
   const target = useSyncExternalStore(subscribeTerminalTargets, () => terminalTarget(tab.id))
   const screen = useRef<HTMLDivElement | null>(null)
@@ -81,6 +83,7 @@ export function TerminalBody({ useTabInfo, sessionId, list, close, t }: Terminal
         list={list}
         close={close}
         onChoose={choice => { chooseTerminal(tab.id, choice) }}
+        onShow={showTab}
         onCancel={() => { tab.actions.close() }}
         t={t}
       />
@@ -135,6 +138,16 @@ export function TerminalBody({ useTabInfo, sessionId, list, close, t }: Terminal
             </Button>
           )
           : null}
+        <Button
+          className={css.action}
+          size="sm"
+          variant="ghost"
+          data-terminal-newtab
+          title={t('action.newTab')}
+          onClick={openAnother}
+        >
+          {t('action.newTab')}
+        </Button>
       </div>
     </div>
   )

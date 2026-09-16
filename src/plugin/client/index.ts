@@ -126,7 +126,7 @@ function sectionFace(t: Translate): RemoteWorktreesFace {
 export const name = 'dsh-remote-workspace-ui'
 
 /** Client services this plugin needs before it activates. */
-export const inject = ['slots', 'locale', 'sidebarRightTabs']
+export const inject = ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight']
 
 /**
  * Mount the client half.

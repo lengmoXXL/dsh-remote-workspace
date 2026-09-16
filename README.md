@@ -20,7 +20,7 @@ English | [中文](README.zh.md)
 ## Install
 
 ```sh
-dsh plugin --profile web add https://github.com/lengmoXXL/dsh-remote-workspace/releases/download/plugin-v0.1.7/dsh-remote-workspace-0.1.7.tgz
+dsh plugin --profile web add https://github.com/lengmoXXL/dsh-remote-workspace/releases/download/plugin-v0.1.8/dsh-remote-workspace-0.1.8.tgz
 ```
 
 The plugin takes over services the base profile provides, and the host plane holds one implementation per service. Add
@@ -62,9 +62,11 @@ shared secret. `Local` needs neither. Machines connect on their own, and one tha
 button. Register a repository, then use a row's menu to open, close, or remove what it holds.
 
 **Terminal.** The right Sidebar's add control has a **Terminal** button: it lists the Session's live terminals and
-offers a new one. Closing a tab leaves that shell running — it shows up in the chooser as detached — and **End
-terminal** in the panel, or a row's close control in the chooser, is what ends it. Hiding the tab, switching Session,
-or collapsing the sidebar also leaves a shell running.
+offers a new one. **New terminal** in the panel's status bar opens a second terminal tab beside the one in view, where
+the chooser offers a fresh shell or one that is already running; a shell another tab already shows is marked **Open in
+another tab**, and picking it brings that tab forward. Closing a tab leaves that shell running — it shows up in the
+chooser as detached — and **End terminal** in the panel, or a row's close control in the chooser, is what ends it.
+Hiding the tab, switching Session, or collapsing the sidebar also leaves a shell running.
 
 ## Config
 

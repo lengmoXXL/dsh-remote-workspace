@@ -97,6 +97,12 @@ async function loadBundle(): Promise<LoadedEntry> {
   return loaded!
 }
 
+/** One resource open the terminal panel asked the right Sidebar for. */
+interface OpenedTab {
+  readonly address: string
+  readonly options: { readonly kind?: string; readonly revealIfOpened?: boolean } | undefined
+}
+
 /** The stub context `apply` is driven with. */
 function stubContext(): {
   ctx: unknown
@@ -106,10 +112,13 @@ function stubContext(): {
     key?: string
     order?: number
     label?: (() => string) | undefined
+    inject?: unknown
     component: unknown
   }[]
   tabs: { id: string; kind: string }[]
   locales: { ns: string; dictionaries: Record<string, unknown> }[]
+  opened: OpenedTab[]
+  focused: string[]
 } {
   const registrations: {
     name: string
@@ -117,10 +126,13 @@ function stubContext(): {
     key?: string
     order?: number
     label?: (() => string) | undefined
+    inject?: unknown
     component: unknown
   }[] = []
   const tabs: { id: string; kind: string }[] = []
   const locales: { ns: string; dictionaries: Record<string, unknown> }[] = []
+  const opened: OpenedTab[] = []
+  const focused: string[] = []
   const ctx = {
     effect: (factory: () => unknown) => factory(),
     locale: {
@@ -146,8 +158,19 @@ function stubContext(): {
         return () => {}
       },
     },
+    sidebarRight: {
+      openResource: (
+        address: string,
+        options?: { readonly kind?: string; readonly revealIfOpened?: boolean },
+      ) => {
+        opened.push({ address, options })
+      },
+      focus: (tabId: string) => {
+        focused.push(tabId)
+      },
+    },
   }
-  return { ctx, registrations, tabs, locales }
+  return { ctx, registrations, tabs, locales, opened, focused }
 }
 
 test('the built bundle registers itself under the plugin id', async () => {
@@ -159,7 +182,7 @@ test('the loaded module exposes exactly the plugin surface', async () => {
   const { exports } = await loadBundle()
   assert.deepEqual(Object.keys(exports).sort(), ['apply', 'inject', 'name'])
   assert.equal(exports['name'], 'dsh-remote-workspace-ui')
-  assert.deepEqual(exports['inject'], ['slots', 'locale', 'sidebarRightTabs'])
+  assert.deepEqual(exports['inject'], ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight'])
 })
 
 test('apply registers the settings section and the terminal tab', async () => {
@@ -175,6 +198,43 @@ test('apply registers the settings section and the terminal tab', async () => {
   assert.equal(body?.key, 'dsh-terminal')
   assert.equal(typeof body?.component, 'function')
   assert.deepEqual(tabs.map(tab => [tab.id, tab.kind]), [['dsh-terminal', 'terminal']])
+})
+
+test('the terminal panel opens a sibling tab as a duplicate the Sidebar permits', async () => {
+  const { exports } = await loadBundle()
+  const { ctx, registrations, opened } = stubContext()
+
+  ;(exports['apply'] as (ctx: unknown) => void)(ctx)
+
+  const body = registrations.find(entry => entry.name === 'sidebar.right.pane.tab')
+  const face = (body?.inject as (() => { openAnother(): void }) | undefined)?.()
+  assert.notEqual(face, undefined, 'the terminal body carries an injected face')
+  face?.openAnother()
+  face?.openAnother()
+
+  // A page kind deduplicates inside its pane, so the sibling is a resource tab
+  // at an address of its own with `revealIfOpened: false` — the option that
+  // permits the duplicate.
+  assert.equal(opened.length, 2)
+  assert.equal(new Set(opened.map(entry => entry.address)).size, 2, 'each sibling gets its own address')
+  for (const entry of opened) {
+    assert.match(entry.address, /^dsh-resource:\/\/terminal\/tab\/[^/]+$/)
+    assert.deepEqual(entry.options, { kind: 'terminal', revealIfOpened: false })
+  }
+})
+
+test('the terminal panel brings forward the tab already showing a shell', async () => {
+  const { exports } = await loadBundle()
+  const { ctx, registrations, focused } = stubContext()
+
+  ;(exports['apply'] as (ctx: unknown) => void)(ctx)
+
+  const body = registrations.find(entry => entry.name === 'sidebar.right.pane.tab')
+  const face = (body?.inject as (() => { showTab(tabId: string): void }) | undefined)?.()
+  face?.showTab('tab-7')
+  face?.showTab('tab-9')
+
+  assert.deepEqual(focused, ['tab-7', 'tab-9'], 'the picker focuses the tab that owns the shell')
 })
 
 test('the section carries a nav label read from its own dictionary', async () => {

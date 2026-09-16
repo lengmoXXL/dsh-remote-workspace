@@ -16,7 +16,8 @@
  * what it offers is exactly what the model's terminal tool would address. A row
  * the page last used leads, because that is the shell a reload most likely left
  * behind; closing a row ends that shell, which is how a terminal no tab holds
- * is finally let go.
+ * is finally let go. A shell another tab is already drawing is marked, and
+ * picking it brings that tab forward instead of attaching a second view.
  *
  * @module dsh-remote-workspace/plugin/client/terminal/TerminalPicker
  */
@@ -25,7 +26,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Button, IconCloseOutline16, IconWarningOutline16, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
 import type { TerminalKey } from './locales.ts'
-import { lastTerminal, type TerminalTarget } from './session.ts'
+import { lastTerminal, terminalTab, type TerminalTarget } from './session.ts'
 import css from './TerminalPicker.module.css'
 
 /** One terminal the host reports, as the agent's terminal tool lists it. */
@@ -62,13 +63,17 @@ export interface TerminalPickerProps {
   readonly close: (id: string) => Promise<void>
   /** Take the chosen shell; the body mounts it next. */
   readonly onChoose: (target: TerminalTarget) => void
+  /** Bring forward the tab already showing one shell, rather than attach it here again. */
+  readonly onShow: (tabId: string) => void
   /** Leave without a terminal; the empty tab goes with it. */
   readonly onCancel: () => void
   readonly t: Translate<TerminalKey>
 }
 
 /** Ask which shell this terminal tab should show. */
-export function TerminalPicker({ sessionId, list, close, onChoose, onCancel, t }: TerminalPickerProps): ReactNode {
+export function TerminalPicker({
+  sessionId, list, close, onChoose, onShow, onCancel, t,
+}: TerminalPickerProps): ReactNode {
   const [terminals, setTerminals] = useState<readonly TerminalSummary[] | undefined>(undefined)
   const [error, setError] = useState<string | undefined>(undefined)
   const [closing, setClosing] = useState<string | undefined>(undefined)
@@ -134,35 +139,50 @@ export function TerminalPicker({ sessionId, list, close, onChoose, onCancel, t }
           <div className={css.empty}>{t('picker.empty')}</div>
         ) : (
           <div className={css.list}>
-            {offered.map(entry => (
-              <div className={css.row} key={entry.id}>
-                <button
-                  type="button"
-                  className={css.entry}
-                  data-terminal-choice={entry.id}
-                  data-terminal-state={entry.state}
-                  onClick={() => onChoose({ kind: 'existing', id: entry.id })}
-                >
-                  <span className={css.label}>{entry.label}</span>
-                  <span className={css.meta}>
-                    <span>{t(stateKey(entry.state))}</span>
-                    <span> · {entry.machine} · </span>
-                    <span className={css.path} title={entry.cwd}>{entry.cwd}</span>
-                  </span>
-                </button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  data-terminal-close={entry.id}
-                  aria-label={t('picker.close', { label: entry.label })}
-                  title={t('picker.close', { label: entry.label })}
-                  disabled={closing !== undefined}
-                  onClick={() => void remove(entry.id)}
-                >
-                  <IconCloseOutline16 />
-                </Button>
-              </div>
-            ))}
+            {offered.map(entry => {
+              // A shell another tab is drawing is brought forward instead of
+              // attached a second time; one no tab holds attaches here.
+              const owner = terminalTab(entry.id)
+              return (
+                <div className={css.row} key={entry.id}>
+                  <button
+                    type="button"
+                    className={css.entry}
+                    data-terminal-choice={entry.id}
+                    data-terminal-state={entry.state}
+                    onClick={() => {
+                      if (owner === undefined) onChoose({ kind: 'existing', id: entry.id })
+                      else onShow(owner)
+                    }}
+                  >
+                    <span className={css.head}>
+                      <span className={css.label}>{entry.label}</span>
+                      {owner === undefined ? null : (
+                        <span className={css.opened} data-terminal-opened={entry.id}>
+                          {t('picker.opened')}
+                        </span>
+                      )}
+                    </span>
+                    <span className={css.meta}>
+                      <span>{t(stateKey(entry.state))}</span>
+                      <span> · {entry.machine} · </span>
+                      <span className={css.path} title={entry.cwd}>{entry.cwd}</span>
+                    </span>
+                  </button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    data-terminal-close={entry.id}
+                    aria-label={t('picker.close', { label: entry.label })}
+                    title={t('picker.close', { label: entry.label })}
+                    disabled={closing !== undefined}
+                    onClick={() => void remove(entry.id)}
+                  >
+                    <IconCloseOutline16 />
+                  </Button>
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
