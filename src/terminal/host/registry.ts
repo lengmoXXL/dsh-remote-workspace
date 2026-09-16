@@ -119,8 +119,6 @@ export interface TerminalEntry {
   outcome?: TtyOutcome
   cols: number
   rows: number
-  /** Milliseconds since the epoch of the last output byte. */
-  lastActivityAt: number
   /** Consumers currently receiving output; the tab's socket is the usual one. */
   readonly attaches: Set<TerminalSink>
   /** Waiters to wake when output arrives or the process exits. */
@@ -167,16 +165,9 @@ export interface TerminalWait {
 }
 
 /**
- * The local terminal backend.
- *
- * The verbs are the ones a terminal consumer needs; they mirror the official
- * terminal seam closely enough that {@link createTerminalBackend} can adapt
- * this object to `ctx.terminals.registerBackend` without the registry knowing
- * that seam exists.
+ * The terminal table the socket, the management API, and the model's tool share.
  */
 export interface TerminalRegistry {
-  /** Backend type name, which the official terminal seam selects backends by. */
-  readonly type: string
   /**
    * Register a terminal a person just opened, spawning it through the seam.
    * @param sessionId - the Session whose tab owns it.
@@ -365,7 +356,6 @@ export function createTerminalRegistry(options: TerminalRegistryOptions): Termin
 
   /** Append output, dropping the oldest bytes once the cap is reached. */
   const append = (entry: TerminalEntry, chunk: Buffer): void => {
-    entry.lastActivityAt = Date.now()
     entry.bytes += chunk.length
     if (chunk.length >= BUFFER_BYTES) {
       entry.buffer = Buffer.from(chunk.subarray(chunk.length - BUFFER_BYTES))
@@ -461,8 +451,6 @@ export function createTerminalRegistry(options: TerminalRegistryOptions): Termin
   }
 
   const registry: TerminalRegistry = {
-    type: 'dsh-remote-workspace',
-
     async open(sessionId, cwd, size): Promise<TerminalEntry> {
       const handle = await options.spawn({
         argv: [options.settings.shell, ...options.settings.shellArgs],
@@ -489,7 +477,6 @@ export function createTerminalRegistry(options: TerminalRegistryOptions): Termin
         state: 'running',
         cols: size.cols,
         rows: size.rows,
-        lastActivityAt: Date.now(),
         attaches: new Set(),
         waiters: new Set(),
       }
@@ -542,7 +529,6 @@ export function createTerminalRegistry(options: TerminalRegistryOptions): Termin
       const entry = entryOf(id)
       entry.cols = cols
       entry.rows = rows
-      entry.lastActivityAt = Date.now()
       // A refusal is not a failure: the browser is told the size is stale.
       return await entry.handle.resize(cols, rows).then(() => true, () => false)
     },
@@ -600,7 +586,6 @@ export function createTerminalRegistry(options: TerminalRegistryOptions): Termin
         throw new TerminalRegistryError(`terminal "${id}" has already exited`)
       }
       await entry.handle.write(text)
-      entry.lastActivityAt = Date.now()
       return Buffer.byteLength(text, 'utf8')
     },
 
@@ -621,7 +606,6 @@ export function createTerminalRegistry(options: TerminalRegistryOptions): Termin
         return sequence
       }).join('')
       await entry.handle.write(bytes)
-      entry.lastActivityAt = Date.now()
       return { bytes: Buffer.byteLength(bytes, 'utf8'), keys: names.length }
     },
 

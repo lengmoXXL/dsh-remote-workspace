@@ -38,19 +38,11 @@ export interface RoutingTtyDeps {
 }
 
 /**
- * One node's terminal methods, over this plugin's channel.
- *
- * The port takes the daemon's opaque session id as a string; this is where it
- * becomes the branded id the wire contract carries, in the one module that
- * mints it.
- * @param channel - the live node channel.
- * @returns the wire the remote provider drives.
- */
-/**
  * Adapt one node channel to the terminal port.
  *
  * Both seams that allocate a terminal on a node drive the same daemon methods,
- * so they drive them through this one adapter.
+ * so they drive them through this one adapter — and this is the one place the
+ * daemon's opaque session id becomes the branded id the wire contract carries.
  * @param channel - the live node channel.
  * @returns the port `createRemoteTty` drives.
  */
