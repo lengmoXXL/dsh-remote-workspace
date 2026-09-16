@@ -20,7 +20,7 @@ English | [中文](README.zh.md)
 ## Install
 
 ```sh
-dsh plugin --profile web add https://github.com/lengmoXXL/dsh-remote-workspace/releases/download/plugin-v0.1.8/dsh-remote-workspace-0.1.8.tgz
+dsh plugin --profile web add https://github.com/lengmoXXL/dsh-remote-workspace/releases/download/plugin-v0.1.9/dsh-remote-workspace-0.1.9.tgz
 ```
 
 The plugin takes over services the base profile provides, and the host plane holds one implementation per service. Add

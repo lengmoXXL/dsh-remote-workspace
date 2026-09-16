@@ -102,6 +102,14 @@ interface Entry {
   fixedSize: boolean
   /** Which frame this socket's first answer belongs to, so an attach failure falls back to open. */
   pending: 'open' | 'attach'
+  /**
+   * Whether an attach's retained history is still being parsed.
+   *
+   * The history re-runs the terminal queries the shell emitted earlier; letting
+   * the terminal answer them now types the answers into a shell that is not
+   * waiting for them, so they are suppressed while the replay parses.
+   */
+  replaying: boolean
 }
 
 /** The monospace stack a terminal is drawn in. */
@@ -339,6 +347,7 @@ function create(mount: TerminalMount): Entry {
     size: { cols: term.cols, rows: term.rows },
     fixedSize: false,
     pending: 'open',
+    replaying: false,
   }
 
   // A size the browser measures before the socket is up is what the open frame
@@ -381,15 +390,27 @@ function wire(entry: Entry): void {
     const { cols, rows } = entry.size
     if (entry.id === undefined) {
       entry.pending = 'open'
+      entry.replaying = false
       send(entry, { t: 'open', sessionId: entry.sessionId, cols, rows })
     } else {
       entry.pending = 'attach'
+      entry.replaying = true
       send(entry, { t: 'attach', id: entry.id, cols, rows })
     }
   })
   socket.addEventListener('message', (event: MessageEvent<unknown>) => {
     if (event.data instanceof ArrayBuffer) {
-      entry.term.write(new Uint8Array(event.data))
+      const chunk = new Uint8Array(event.data)
+      if (!entry.replaying) {
+        entry.term.write(chunk)
+        return
+      }
+      // The host replays the retained history before it answers `ready`, so the
+      // first binary frame of an attach is that history. Suppress the terminal's
+      // own replies for as long as it parses, so they cannot reach the PTY.
+      entry.replaying = false
+      entry.term.options.disableStdin = true
+      entry.term.write(chunk, () => { entry.term.options.disableStdin = false })
       return
     }
     let frame: HostFrame
@@ -400,6 +421,8 @@ function wire(entry: Entry): void {
     }
     switch (frame.t) {
       case 'ready':
+        // No history arrived, so there is nothing left to suppress.
+        entry.replaying = false
         entry.id = frame.id
         entry.label = frame.label
         memorize(entry.sessionId, frame.id)
@@ -423,6 +446,7 @@ function wire(entry: Entry): void {
           entry.label = undefined
           emitLabels()
           entry.pending = 'open'
+          entry.replaying = false
           send(entry, { t: 'open', sessionId: entry.sessionId, cols: entry.size.cols, rows: entry.size.rows })
           return
         }

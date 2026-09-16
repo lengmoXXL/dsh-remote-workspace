@@ -19,7 +19,7 @@
 ## 安装
 
 ```sh
-dsh plugin --profile web add https://github.com/lengmoXXL/dsh-remote-workspace/releases/download/plugin-v0.1.8/dsh-remote-workspace-0.1.8.tgz
+dsh plugin --profile web add https://github.com/lengmoXXL/dsh-remote-workspace/releases/download/plugin-v0.1.9/dsh-remote-workspace-0.1.9.tgz
 ```
 
 插件要接管 base profile 提供的服务，而 host plane 每项服务只允许一个实现。把这四行加进
