@@ -273,8 +273,9 @@ export interface TerminalRegistry {
   /**
    * End one terminal and remove it.
    * @param id - the terminal.
+   * @returns whether a terminal with that id was open.
    */
-  kill(id: string): Promise<void>
+  kill(id: string): Promise<boolean>
   /**
    * End every terminal one Session owns; the per-session disposal hook.
    * @param sessionId - the Session that ended.
@@ -688,9 +689,9 @@ export function createTerminalRegistry(options: TerminalRegistryOptions): Termin
       })
     },
 
-    async kill(id): Promise<void> {
+    async kill(id): Promise<boolean> {
       const entry = entries.get(id)
-      if (entry === undefined) return
+      if (entry === undefined) return false
       if (entry.detachTimer !== undefined) {
         clearTimeout(entry.detachTimer)
         entry.detachTimer = undefined
@@ -700,6 +701,7 @@ export function createTerminalRegistry(options: TerminalRegistryOptions): Termin
       entry.state = 'exited'
       notify(entry)
       await entry.handle.terminate().catch(() => undefined)
+      return true
     },
 
     async releaseSession(sessionId): Promise<void> {

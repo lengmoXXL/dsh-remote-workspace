@@ -293,6 +293,16 @@ const CHIP_TITLES = `[...document.querySelectorAll('[data-dockkit-tab-title]')].
 /** Page-side reader for the plugin client's per-Session terminal memory. */
 const TERMINAL_MEMORY = `JSON.parse(localStorage.getItem('dsh-remote-workspace.terminal') ?? '{}')`
 
+/** Page-side reader for the terminal chooser's rows, in the order it shows them. */
+const PICKER_ROWS = `[...document.querySelectorAll('[data-terminal-choice]')]`
+  + `.map(el => el.getAttribute('data-terminal-choice'))`
+
+/** Page-side reader for one chooser row's reported lifecycle state. */
+function pickerState(id: string): string {
+  return `document.querySelector('[data-terminal-choice="${id}"]')`
+    + `?.getAttribute('data-terminal-state') ?? null`
+}
+
 /**
  * Open one Workspace as a Session, which is the only place a terminal can live.
  *
@@ -311,6 +321,9 @@ async function openWorkspaceSession(page: FirefoxPage, workspace: string): Promi
     + `  return /新建会话|new session/i.test(label) && label.includes(${JSON.stringify(workspace)})\n`
     + `})`
   await waitFor(page, `${control} !== undefined`, "the workspace's new-session control")
+  // Opening a Session can raise the shell's own key notice, which is modal and
+  // would sit between the pointer and everything below it.
+  await clearShellDialogs(page)
   await page.evaluate(`${control}.click()`)
   // The panel element is present whenever the Session's right Sidebar is
   // mounted, expanded or collapsed, so it is what tells "no Session" apart from
@@ -319,15 +332,39 @@ async function openWorkspaceSession(page: FirefoxPage, workspace: string): Promi
 }
 
 /**
- * Open one terminal tab in the right Sidebar.
- *
- * The panel's strip carries the add control; it opens the guide, and the guide
- * carries the terminal entry this plugin contributes. A pane already holding
- * the guide shows the entry without the add control, so both paths are taken.
+ * Reload the shell, as a person does, and clear whatever notice it raises on a
+ * fresh page.
  * @param page - the page to act on.
- * @returns the host-assigned chip title, which names the terminal's id.
+ * @param instance - the deployment whose URL is reloaded.
  */
-async function openTerminal(page: FirefoxPage): Promise<string> {
+async function reload(page: FirefoxPage, instance: E2eInstance): Promise<void> {
+  await page.navigate(instance.pageUrl)
+  await waitFor(page, 'document.readyState === "complete"', 'the document after the reload')
+  await waitFor(page, 'document.body.innerText.length > 40', 'the shell after the reload')
+  // The shell decides on its own notices a beat after the first paint, so the
+  // first clear can beat them. Waiting for the workspace list it must render
+  // anyway is what makes the second clear land after them.
+  await clearShellDialogs(page)
+  await waitFor(
+    page,
+    `document.body.innerText.includes('here · local-repo · Local')`,
+    'the workspace list after the reload',
+  )
+  await clearShellDialogs(page)
+}
+
+/**
+ * Open the terminal chooser from the strip's add control.
+ *
+ * The Terminal entry no longer opens a shell by itself: it opens the page, and
+ * the page asks which shell to show. A pane already holding the guide shows the
+ * entry without the add control, so both paths are taken.
+ * @param page - the page to act on.
+ */
+async function openTerminalChooser(page: FirefoxPage): Promise<void> {
+  // A shell notice left over from opening the Session is modal, so it goes
+  // before anything here is clicked.
+  await clearShellDialogs(page)
   // The seat belongs to a Session that is on screen: wait for it rather than
   // checking once, because it mounts a beat after the Session opens.
   await waitFor(
@@ -357,6 +394,15 @@ async function openTerminal(page: FirefoxPage): Promise<string> {
     'the terminal entry in the guide',
   )
   await page.evaluate(`document.querySelector('[data-sidebar-right-guide-entry="terminal"]').click()`)
+  await waitFor(page, `document.querySelector('[data-terminal-picker]') !== null`, 'the terminal chooser')
+}
+
+/**
+ * Wait for the host to register the chosen shell and report its chip title.
+ * @param page - the page to act on.
+ * @returns the chip title, which carries the terminal's registry id.
+ */
+async function waitForTerminalChip(page: FirefoxPage): Promise<string> {
   // The chip only carries a number once the host has registered the shell and
   // answered the socket, so this waits for a live terminal, not just a tab.
   const titlePattern = JSON.stringify(TERMINAL_TITLE.source)
@@ -367,6 +413,29 @@ async function openTerminal(page: FirefoxPage): Promise<string> {
       const title = ${CHIP_TITLES}.find(candidate => pattern.test(candidate))
       return title ?? ''
     })()`)
+}
+
+/**
+ * Open one terminal through the chooser.
+ *
+ * @param page - the page to act on.
+ * @param choose - the existing terminal to attach to, or a fresh shell.
+ * @returns the host-assigned chip title, which names the terminal's id.
+ */
+async function openTerminal(page: FirefoxPage, choose: { readonly id: string } | 'new'): Promise<string> {
+  await openTerminalChooser(page)
+  // The chooser is a dialog of its own, so a shell notice that arrived after it
+  // is what a clear here finds; the chooser's buttons carry no skip label and
+  // are left alone.
+  await clearShellDialogs(page)
+  if (choose === 'new') {
+    await page.evaluate(`document.querySelector('[data-terminal-new]').click()`)
+  } else {
+    const row = `document.querySelector('[data-terminal-choice="${choose.id}"]')`
+    await waitFor(page, `${row} !== null`, `the ${choose.id} row in the chooser`)
+    await page.evaluate(`${row}.click()`)
+  }
+  return await waitForTerminalChip(page)
 }
 
 /**
@@ -846,8 +915,9 @@ test('a remote worktree is created and removed through the browser', { timeout: 
 
     // Closing a tab still ends its shell: the client sends `close` on teardown,
     // so reopening produces a different terminal rather than the one the closed
-    // tab left behind.
-    const firstTerminal = await openTerminal(page)
+    // tab left behind. The chooser is how a terminal opens at all, so both are
+    // opened through it.
+    const firstTerminal = await openTerminal(page, 'new')
     await shot('11-terminal-open')
     const firstId = `t${firstTerminal.replace(/\D+/g, '')}`
     await closeTabByTitle(page, firstTerminal)
@@ -856,14 +926,15 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     const closedProbe = await attachAndRead(page, firstId)
     assert.equal(closedProbe.ready, null, 'a closed tab left a terminal to reattach to')
     assert.match(String(closedProbe.error), /not open|exited/)
-    const secondTerminal = await openTerminal(page)
+    const secondTerminal = await openTerminal(page, 'new')
     assert.notEqual(secondTerminal, firstTerminal, 'a reopened terminal is a new terminal')
     await shot('12-terminal-reopened')
 
     // The acceptance case: set a marker in the live terminal, reload the page
-    // (which drops the socket with no `close`), then reopen a terminal tab the
-    // way a person does. The shell restores no sidebar tab, so only the
-    // plugin's own per-Session memory can bring the new tab back to this shell.
+    // (which drops the socket with no `close`), then open a terminal the way a
+    // person does. The shell restores no sidebar tab, so without the chooser
+    // this shell would be alive on the host and unreachable by anyone but the
+    // model's terminal tool.
     const terminalId = `t${secondTerminal.replace(/\D+/g, '')}`
     await typeInTerminal(page, 'export DRW_PROBE=42')
     await page.press('Enter')
@@ -878,10 +949,7 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     )
     await shot('13-terminal-marker')
 
-    await page.navigate(instance.pageUrl)
-    await waitFor(page, 'document.readyState === "complete"', 'the document after the reload')
-    await waitFor(page, 'document.body.innerText.length > 40', 'the shell after the reload')
-    await clearShellDialogs(page)
+    await reload(page, instance)
     await shot('14-after-reload')
     console.log(
       `reload: terminal before=${JSON.stringify(secondTerminal)} (${terminalId}); `
@@ -890,13 +958,36 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     )
 
     // Reopen the Session the person had — the workspace's own new-session
-    // control reuses the blank Session this run started — and then reopen a
-    // terminal tab from the strip's add control.
+    // control reuses the blank Session this run started — and then open the
+    // chooser from the strip's add control. The shell the reload detached is
+    // what it offers, and it says so.
     await openWorkspaceSession(page, 'here · local-repo · Local')
-    const restored = await openTerminal(page)
-    await shot('14b-reattached-terminal')
+    await openTerminalChooser(page)
+    await waitFor(
+      page,
+      `document.querySelector('[data-terminal-choice="${terminalId}"]') !== null`,
+      'the detached shell in the chooser',
+    )
+    assert.deepEqual(
+      await page.evaluate<readonly (string | null)[]>(PICKER_ROWS),
+      [terminalId],
+      'the chooser lists the shell the reload left behind',
+    )
+    assert.equal(
+      await page.evaluate<string>(pickerState(terminalId)),
+      'detached',
+      'the shell outlived its tab and the host reports it detached',
+    )
+    await shot('14b-terminal-chooser')
 
-    assert.equal(restored, secondTerminal, 'the reopened tab attached to the same terminal')
+    // Choosing it attaches: the same chip title, the same shell, the earlier
+    // output replayed.
+    await clearShellDialogs(page)
+    await page.evaluate(`document.querySelector('[data-terminal-choice="${terminalId}"]').click()`)
+    const restored = await waitForTerminalChip(page)
+    await shot('14c-reattached-terminal')
+
+    assert.equal(restored, secondTerminal, 'the chosen terminal is the same shell')
     assert.deepEqual(
       await page.evaluate<Record<string, string>>(TERMINAL_MEMORY),
       memoryBefore,
@@ -908,7 +999,19 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     await typeInTerminal(page, 'echo again=$DRW_PROBE')
     await page.press('Enter')
     await waitFor(page, `${TERMINAL_TEXT}.includes('again=42')`, 'the marker in the reattached shell')
-    await shot('14c-reattached-live')
+    await shot('14d-reattached-live')
+
+    // A second reload leaves the chooser the same choice, and the New terminal
+    // entry must open a different shell rather than the detached one.
+    await reload(page, instance)
+    await openWorkspaceSession(page, 'here · local-repo · Local')
+    const fresh = await openTerminal(page, 'new')
+    assert.notEqual(fresh, secondTerminal, 'the New terminal choice opened a different shell')
+    await shot('15-new-terminal')
+    // The shell the chooser still listed was left alone: choosing New neither
+    // reused it nor ended it.
+    const left = await attachAndRead(page, terminalId)
+    assert.equal(left.ready?.id, terminalId, 'the detached terminal outlived the New terminal choice')
   } catch (error) {
     failure = error
     if (browser !== undefined && deployment !== undefined) {

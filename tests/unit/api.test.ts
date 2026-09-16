@@ -12,6 +12,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { PassThrough } from 'node:stream'
 import type { NodeChannel } from '../../src/remote/client.ts'
 import { NodeRequestError } from '../../src/remote/client.ts'
 import { createAnchorStore } from '../../src/storage/anchors.ts'
@@ -29,6 +30,8 @@ import { handleNodeApi } from '../../src/plugin/api.ts'
 import { asNodeId } from '../../src/storage/nodes.ts'
 import type { NodeId } from '../../src/storage/nodes.ts'
 import { asRepoId } from '../../src/storage/repos.ts'
+import { createTerminalRegistry } from '../../src/terminal/host/registry.ts'
+import type { TtyHandle, TtyOutcome } from '../../src/tty.ts'
 
 let dir: string
 
@@ -40,7 +43,7 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true })
 })
 
-/** A registry, repository store, and connection manager sharing one temp directory. */
+/** A registry, repository store, connection manager, and terminal table sharing one temp directory. */
 async function setup(connect?: Parameters<typeof createNodeConnections>[0]) {
   const registry = createNodeRegistry({ file: join(dir, 'nodes.json') })
   await registry.load()
@@ -80,6 +83,14 @@ async function setup(connect?: Parameters<typeof createNodeConnections>[0]) {
     worktreeRoot,
     workspace,
   })
+  // The terminal table is the real one over a fake seam, so a case can open a
+  // shell and watch the route end it.
+  let terminations = 0
+  const terminals = createTerminalRegistry({
+    spawn: () => Promise.resolve(fakeTerminal(() => { terminations += 1 })),
+    settings: { shell: '/bin/sh', shellArgs: [], env: {}, graceMs: 1000 },
+    machine: () => ({ nodeId: LOCAL_NODE_ID, label: 'Local' }),
+  })
   return {
     registry,
     repos,
@@ -88,7 +99,26 @@ async function setup(connect?: Parameters<typeof createNodeConnections>[0]) {
     anchors,
     worktrees,
     registered,
-    deps: { registry, repos, connections, worktrees, worktreeRoot },
+    terminals,
+    terminations: () => terminations,
+    deps: { registry, repos, connections, worktrees, worktreeRoot, terminals },
+  }
+}
+
+/**
+ * A terminal seam handle the routes can end.
+ * @param onTerminate - called when the handle is terminated.
+ * @returns the handle the registry pumps.
+ */
+function fakeTerminal(onTerminate: () => void): TtyHandle {
+  return {
+    pid: 4242,
+    output: new PassThrough(),
+    // Nothing here exits on its own: these cases are about closing one.
+    done: new Promise<TtyOutcome>(() => {}),
+    async write() {},
+    async resize() {},
+    async terminate() { onTerminate() },
   }
 }
 
@@ -844,4 +874,43 @@ test('a worktree may be placed by the caller, with an absolute path', async () =
   // it whenever the machine's home is already known.
   const reported = await handleNodeApi(request('GET', `/repos/${repo.repoId}`), deps)
   assert.equal((reported.body as { repo: { worktreeRoot?: string } }).repo.worktreeRoot, '/srv/checkouts')
+})
+
+test('the terminal list answers one session with the shells the agent tool addresses', async () => {
+  const { deps, terminals } = await setup()
+  await terminals.open('s1', '/w/live', { cols: 80, rows: 24 })
+  await terminals.open('s2', '/w/other', { cols: 120, rows: 40 })
+
+  const response = await handleNodeApi(request('GET', '/terminals', undefined, 'sessionId=s1'), deps)
+
+  assert.equal(response.status, 200)
+  const listed = (response.body as { terminals: readonly Record<string, unknown>[] }).terminals
+  assert.deepEqual(listed.map(entry => entry['id']), ['t1'], 'only this session\'s terminals')
+  assert.equal(listed[0]?.['label'], 'Terminal 1')
+  assert.equal(listed[0]?.['state'], 'running')
+  assert.equal(listed[0]?.['machine'], 'Local')
+  assert.equal(listed[0]?.['cwd'], '/w/live')
+  assert.equal(listed[0]?.['pid'], 4242)
+})
+
+test('listing terminals without a session is a client error', async () => {
+  const { deps } = await setup()
+  assert.equal((await handleNodeApi(request('GET', '/terminals'), deps)).status, 400)
+  assert.equal((await handleNodeApi(request('GET', '/terminals', undefined, 'sessionId='), deps)).status, 400)
+})
+
+test('closing a terminal ends it, and an unknown id is a 404', async () => {
+  const { deps, terminals, terminations } = await setup()
+  await terminals.open('s1', '/w/live', { cols: 80, rows: 24 })
+
+  const unknown = await handleNodeApi(request('POST', '/terminals/t9/close'), deps)
+  assert.equal(unknown.status, 404)
+  assert.equal(terminations(), 0, 'the refusal ended nothing')
+
+  const closed = await handleNodeApi(request('POST', '/terminals/t1/close'), deps)
+  assert.deepEqual(closed, { status: 200, body: { closed: true } })
+  assert.equal(terminations(), 1)
+  assert.deepEqual(terminals.listFor('s1'), [], 'the ended terminal left the table')
+  // A close is a write, so a read of the same path is the wrong verb.
+  assert.equal((await handleNodeApi(request('GET', '/terminals/t1/close'), deps)).status, 405)
 })

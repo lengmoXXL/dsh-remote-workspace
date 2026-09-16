@@ -38,6 +38,7 @@ import { homedir } from 'node:os'
 import type { LocalPathType } from '../local/fs.ts'
 import { listLocalDir, localPathType, resolveLocalPath } from '../local/fs.ts'
 import { isRepository } from '../local/git.ts'
+import type { TerminalRegistry } from '../terminal/host/registry.ts'
 
 /** One normalized request, already routed to this API's prefix. */
 export interface ApiRequest {
@@ -69,6 +70,13 @@ export interface ManagementApiDeps {
   readonly connections: NodeConnections
   /** The remote worktree lifecycle. */
   readonly worktrees: WorktreeManager
+  /**
+   * The shells a person's tabs have open.
+   *
+   * The panel reads the same table the agent's terminal tool addresses, so a
+   * terminal a reload left without a tab is still findable — and closable.
+   */
+  readonly terminals: TerminalRegistry
   /**
    * Where one machine cuts its checkouts, for the panel's default path.
    *
@@ -469,9 +477,40 @@ async function handleWorktrees(
 }
 
 /**
+ * Handle the terminal half of the API.
+ *
+ * The list is the registry's own projection for one Session, so what the panel
+ * offers is exactly what the agent's terminal tool would address — including a
+ * detached shell whose tab a reload took away. Closing is the registry's kill
+ * path: it ends the shell a tab or a chooser names, and an id nobody holds is a
+ * client error rather than a silent success.
+ * @param request - the normalized request.
+ * @param parts - path segments below `/terminals`.
+ * @param deps - the management dependencies.
+ * @returns the status and JSON body to answer with.
+ */
+async function handleTerminals(
+  request: ApiRequest,
+  parts: readonly string[],
+  deps: ManagementApiDeps,
+): Promise<ApiResponse> {
+  const [id, action] = parts
+  if (id === undefined) {
+    if (request.method !== 'GET') throw notAllowed(request)
+    const sessionId = (request.query.get('sessionId') ?? '').trim()
+    if (sessionId === '') throw new ApiError(400, '"sessionId" is required')
+    return { status: 200, body: { terminals: deps.terminals.listFor(sessionId) } }
+  }
+  if (action !== 'close') throw new ApiError(404, `unknown endpoint ${request.method} ${request.path}`)
+  if (request.method !== 'POST') throw notAllowed(request)
+  if (!await deps.terminals.kill(id)) throw new ApiError(404, `no terminal "${id}"`)
+  return { status: 200, body: { closed: true } }
+}
+
+/**
  * Handle one management request.
  * @param request - the normalized request.
- * @param deps - the registry, connection manager, and worktree lifecycle.
+ * @param deps - the registry, connection manager, worktree lifecycle, and terminals.
  * @returns the status and JSON body to answer with.
  */
 export async function handleNodeApi(request: ApiRequest, deps: ManagementApiDeps): Promise<ApiResponse> {
@@ -479,6 +518,7 @@ export async function handleNodeApi(request: ApiRequest, deps: ManagementApiDeps
     const parts = request.path.split('/').filter(segment => segment !== '')
     const head = parts[0]
 
+    if (head === 'terminals') return await handleTerminals(request, parts.slice(1), deps)
     if (head === 'worktrees') return await handleWorktrees(request, parts.slice(1), deps)
     if (head === 'repos') return await handleRepos(request, parts.slice(1), deps)
     if (head !== 'nodes') {

@@ -278,8 +278,6 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     },
   })
 
-  registerNodeApi(ctx, { registry, repos, connections, worktrees, worktreeRoot })
-
   const subprocessScope = ctx.isolate('subprocess')
   subprocessScope.plugin(LocalSubprocessRuntime)
   subprocessScope.inject(['subprocess'], (scoped) => {
@@ -379,6 +377,10 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       return { nodeId, label: registry.get(nodeId as NodeId)?.title ?? nodeId }
     },
   })
+  // The management API reads the terminal table too: the panel lists the
+  // shells a Session has open and can end one no tab holds, so it is registered
+  // once the table exists.
+  registerNodeApi(ctx, { registry, repos, connections, worktrees, worktreeRoot, terminals })
   registerTerminalSocket(ctx, SOCKET_PATH, terminals)
   registerTerminalTool(ctx, terminals)
 

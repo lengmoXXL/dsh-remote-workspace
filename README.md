@@ -20,7 +20,7 @@ English | [中文](README.zh.md)
 ## Install
 
 ```sh
-dsh plugin --profile web add https://github.com/lengmoXXL/dsh-remote-workspace/releases/download/plugin-v0.1.5/dsh-remote-workspace-0.1.5.tgz
+dsh plugin --profile web add https://github.com/lengmoXXL/dsh-remote-workspace/releases/download/plugin-v0.1.6/dsh-remote-workspace-0.1.6.tgz
 ```
 
 The plugin takes over services the base profile provides, and the host plane holds one implementation per service. Add
@@ -50,8 +50,8 @@ path instead.
 - Cuts worktrees from a repository, adopts worktrees that already exist, or opens the repository directory itself.
   Removing a worktree can delete its branch as well.
 - Opens a directory as a workspace; the file, shell, and terminal tools then run on the machine that owns it.
-- Opens terminal tabs in the right Sidebar, one per Session. Each tab is a terminal with its own id, and a terminal
-  lives as long as its tab.
+- Opens terminal tabs in the right Sidebar, one per Session. The **Terminal** entry first lists that Session's live
+  shells — including one a page reload detached from its tab — so one can be reattached or closed.
 - Lets the agent work in a terminal that has a tab open. It lists them, reads output, writes text and keys (including
   `ctrl+c`), and waits for output to appear. It does not create or close terminals.
 
@@ -61,8 +61,9 @@ path instead.
 shared secret. `Local` needs neither. Machines connect on their own, and one that stays unreachable shows a **Connect**
 button. Register a repository, then use a row's menu to open, close, or remove what it holds.
 
-**Terminal.** The right Sidebar's add control has a **Terminal** button. Closing a tab ends that shell; hiding the tab,
-switching Session, or collapsing the sidebar leaves it running.
+**Terminal.** The right Sidebar's add control has a **Terminal** button: it lists the Session's live terminals and
+offers a new one. Closing a tab ends that shell, and a row's close control ends a shell no tab holds; hiding the tab,
+switching Session, or collapsing the sidebar leaves a shell running.
 
 ## Config
 

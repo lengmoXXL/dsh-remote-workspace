@@ -25,9 +25,24 @@ export const zh = {
   'status.signalled': '终端已退出（信号 {signal}）',
   'status.disconnected': '连接已断开',
 
+  'state.running': '运行中',
+  'state.detached': '已断开',
+  'state.exited': '已退出',
+
+  'picker.title': '选择终端',
+  'picker.description': '连接到一个已在运行的终端，或打开一个新的。',
+  'picker.empty': '这个会话里还没有终端。',
+  'picker.new': '新终端',
+  'picker.close': '关闭终端 {label}',
+
   'note.fixedSize': '这台机器上的终端不支持调整大小',
 
   'action.restart': '重新打开',
+
+  loading: '正在读取…',
+  cancel: '取消',
+  close: '关闭',
+  requestFailed: '请求失败（{status}）',
 }
 
 /** Every key this namespace owns. */
@@ -45,7 +60,22 @@ export const en = {
   'status.signalled': 'The terminal exited (signal {signal})',
   'status.disconnected': 'The connection dropped',
 
+  'state.running': 'running',
+  'state.detached': 'detached',
+  'state.exited': 'exited',
+
+  'picker.title': 'Choose a terminal',
+  'picker.description': 'Attach to a terminal that is already running, or open a new one.',
+  'picker.empty': 'No terminals in this session yet.',
+  'picker.new': 'New terminal',
+  'picker.close': 'Close terminal {label}',
+
   'note.fixedSize': 'Terminals on this machine cannot be resized',
 
   'action.restart': 'Restart',
+
+  loading: 'Loading…',
+  cancel: 'Cancel',
+  close: 'Close',
+  requestFailed: 'Request failed with {status}',
 } satisfies Record<TerminalKey, string>

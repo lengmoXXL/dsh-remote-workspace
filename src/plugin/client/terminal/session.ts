@@ -12,8 +12,14 @@
  * sends the host an explicit `close`, which ends the shell; a socket that drops
  * on its own only detaches the shell, and the id kept here is what reattaches
  * to it. Because the shell restores no tab across a reload, that id is also
- * written to `localStorage` per Session, so a terminal tab the person opens
- * again comes back to the shell it had.
+ * written to `localStorage` per Session: the chooser lists the shell this page
+ * last used first, so coming back to it is one click.
+ *
+ * Which shell a tab shows is decided before its first terminal exists: a tab
+ * whose person has not chosen yet is shown the chooser, and {@link chooseTerminal}
+ * records the answer by tab id so the body can unmount and return without
+ * asking again. The choice outlives the body for the same reason the entry
+ * does.
  *
  * @module dsh-remote-workspace/plugin/client/terminal/session
  */
@@ -39,6 +45,13 @@ export type TerminalState =
   /** The host refused to allocate a shell. */
   | { readonly kind: 'failed'; readonly message: string }
 
+/** Which shell a terminal tab is bound to, once its person has chosen. */
+export type TerminalTarget =
+  /** Attach to a shell the host already has, by registry id. */
+  | { readonly kind: 'existing'; readonly id: string }
+  /** Open a fresh shell, ignoring whichever one this Session last used. */
+  | { readonly kind: 'new' }
+
 /** Everything one mount of a terminal body supplies. */
 export interface TerminalMount {
   /** The Sidebar tab record's id, which is the terminal's identity. */
@@ -51,6 +64,8 @@ export interface TerminalMount {
   readonly signal: AbortSignal
   /** Receives every state change, including the ones that happen while hidden. */
   readonly onState: (state: TerminalState) => void
+  /** The shell this tab shows; read only where an entry is first created. */
+  readonly target: TerminalTarget
 }
 
 /** One live browser terminal. */
@@ -99,9 +114,9 @@ const MEMORY_KEY = 'dsh-remote-workspace.terminal'
  * The terminal one Session is remembered by, or undefined when there is none.
  *
  * The shell restores no sidebar tab across a reload, so this page's own memory
- * is what lets a person reopen a terminal tab and land in the shell they had.
- * Storage can be unavailable — private mode, a disabled quota — and a missing
- * answer reads exactly like never having remembered one.
+ * is what names the shell a person was last in. Storage can be unavailable —
+ * private mode, a disabled quota — and a missing answer reads exactly like
+ * never having remembered one.
  * @param sessionId - the Session whose terminal is wanted.
  * @returns the remembered registry id, if any.
  */
@@ -127,6 +142,18 @@ function memorize(sessionId: string, id: string | null): void {
   }
 }
 
+/**
+ * The shell this page last used in one Session.
+ *
+ * The chooser reads it to put the likely target first; nothing attaches to it
+ * on its own, because which shell a tab shows is the person's choice.
+ * @param sessionId - the Session whose record is wanted.
+ * @returns the remembered registry id, if any.
+ */
+export function lastTerminal(sessionId: string): string | undefined {
+  return remembered(sessionId)
+}
+
 /** Forget one Session's terminal, unless a newer one has replaced it. */
 function forget(sessionId: string, id: string | undefined): void {
   if (id !== undefined && remembered(sessionId) === id) memorize(sessionId, null)
@@ -135,8 +162,47 @@ function forget(sessionId: string, id: string | undefined): void {
 /** Every terminal this page owns, keyed by tab record id. */
 const entries = new Map<string, Entry>()
 
+/** Each tab's chosen shell, until that tab closes; the body may unmount and return. */
+const targets = new Map<string, TerminalTarget>()
+
+/** Bodies waiting for a tab's choice to land. */
+const targetListeners = new Set<() => void>()
+
 /** Title seats watching for a label the host has not sent yet. */
 const labelListeners = new Set<() => void>()
+
+/**
+ * Record which shell one terminal tab shows.
+ *
+ * Called by the chooser before the tab's first terminal exists; the body then
+ * mounts that shell. The choice is kept by tab id, so unmounting the body —
+ * switching Sidebar tabs, collapsing the column — does not ask again.
+ * @param tabId - the Sidebar tab record's id.
+ * @param target - the shell to attach to, or a fresh one.
+ */
+export function chooseTerminal(tabId: string, target: TerminalTarget): void {
+  targets.set(tabId, target)
+  for (const listener of targetListeners) listener()
+}
+
+/**
+ * One tab's chosen shell.
+ * @param tabId - the Sidebar tab record's id.
+ * @returns the choice, or undefined while the tab is still unchosen.
+ */
+export function terminalTarget(tabId: string): TerminalTarget | undefined {
+  return targets.get(tabId)
+}
+
+/**
+ * Subscribe to terminal choices.
+ * @param listener - called after any tab's choice lands.
+ * @returns the unsubscribe function.
+ */
+export function subscribeTerminalTargets(listener: () => void): () => void {
+  targetListeners.add(listener)
+  return () => { targetListeners.delete(listener) }
+}
 
 /** Whether the theme observer is already installed. */
 let watchingTheme = false
@@ -248,9 +314,10 @@ function create(mount: TerminalMount): Entry {
     observer,
     host: mount.host,
     onState: mount.onState,
-    // A terminal this Session already had is what a reopened tab comes back to;
-    // the socket decides from the id whether to attach or to open.
-    id: remembered(mount.sessionId),
+    // The chooser's answer decides the first frame: an existing id attaches to
+    // a shell the host kept, and a fresh one opens without consulting the last
+    // terminal this Session used.
+    id: mount.target.kind === 'existing' ? mount.target.id : undefined,
     state: { kind: 'opening' },
     size: { cols: term.cols, rows: term.rows },
     fixedSize: false,
@@ -355,6 +422,9 @@ function wire(entry: Entry): void {
 /** Release one terminal: its shell, its socket, and its scrollback. */
 function dispose(tabId: string): void {
   const entry = entries.get(tabId)
+  // The tab is gone whether or not a shell ever existed for it; a choice made
+  // for it must not outlive it.
+  targets.delete(tabId)
   if (entry === undefined) return
   entries.delete(tabId)
   forget(entry.sessionId, entry.id)
@@ -425,6 +495,9 @@ export function restartTerminal(tabId: string): void {
     host: entry.host,
     signal: entry.signal,
     onState: entry.onState,
+    // The shell this tab had is gone, whatever it was: a restart opens a fresh
+    // one rather than attaching to an id the host may already have released.
+    target: { kind: 'new' },
   }
   dispose(tabId)
   const replacement = create(mount)

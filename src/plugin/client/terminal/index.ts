@@ -8,6 +8,14 @@
  * per Session, not per file — so the type carries no patterns and opens by
  * kind.
  *
+ * The guide capsule cannot express one row per live terminal: a guide entry
+ * carries static copy and opens its type by kind, with no payload a body could
+ * read, and the entries are registered once rather than per shell. The body
+ * therefore asks through its own chooser, which reads the host's terminal table
+ * over this plugin's management route: the same table the agent's terminal tool
+ * addresses, so a shell a reload detached from its tab is still offered — and
+ * can be closed — instead of living on invisibly.
+ *
  * Every Harness import here is `import type`: the browser bundle shares the
  * shell's React and its `@deepseek-ai/*` modules through the loader's `require`,
  * and a value import from anything but the primitives package would need a
@@ -27,8 +35,10 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { SidebarRightTabDefinition } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
+import { request } from '../api.ts'
 import { en, NS, zh, type TerminalKey } from './locales.ts'
 import { TerminalBody } from './TerminalBody.tsx'
+import { type TerminalSummary } from './TerminalPicker.tsx'
 import { TerminalTitle } from './TerminalTitle.tsx'
 import { TerminalGlyph } from './glyphs.tsx'
 
@@ -43,6 +53,17 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     /** Terminal tab, guide, and status copy. */
     'dsh-terminal': TerminalKey
   }
+}
+
+/**
+ * What the terminal body reads from the plugin's management routes: the shells
+ * this Session already has, and the way to end one no tab holds.
+ */
+export interface TerminalPanelFace {
+  /** One Session's terminals, as the agent's terminal tool lists them. */
+  list(sessionId: string): Promise<readonly TerminalSummary[]>
+  /** End one terminal, wherever its tab went. */
+  close(id: string): Promise<void>
 }
 
 /**
@@ -67,6 +88,27 @@ function terminalDefinition(t: Translate<TerminalKey>): SidebarRightTabDefinitio
 }
 
 /**
+ * Build the panel face over the host routes.
+ * @param t - the namespace-bound translate every request failure is read through.
+ * @returns the face the terminal body drives.
+ */
+function panelFace(t: Translate<TerminalKey>): TerminalPanelFace {
+  const failure = (status: number): string => t('requestFailed', { status })
+  return {
+    async list(sessionId) {
+      const query = new URLSearchParams({ sessionId })
+      const body = await request<{ terminals: readonly TerminalSummary[] }>(
+        failure, `/terminals?${query.toString()}`,
+      )
+      return body.terminals
+    },
+    async close(id) {
+      await request(failure, `/terminals/${encodeURIComponent(id)}/close`, { method: 'POST' })
+    },
+  }
+}
+
+/**
  * Contribute the terminal tab type and the body behind it to the right Sidebar.
  * @param ctx - the client context.
  */
@@ -77,9 +119,12 @@ export function mountTerminal(ctx: Context): void {
   const t = ctx.locale.bind(NS)
 
   ctx.effect(() => ctx.sidebarRightTabs.register(terminalDefinition(t)), 'dsh-terminal: type')
-  // Stage two of the type: the body registers under the definition's id.
+  // Stage two of the type: the body registers under the definition's id. The
+  // panel face is injected rather than imported by the body, exactly as the
+  // settings section receives its own.
+  const face = panelFace(t)
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register(
-    { name: 'sidebar.right.pane.tab', key: TERMINAL_ID, locale: NS },
+    { name: 'sidebar.right.pane.tab', key: TERMINAL_ID, locale: NS, inject: () => face },
     TerminalBody,
   )), 'dsh-terminal: body')
   // The title is a second seat under the same id: a shell's chip names the id

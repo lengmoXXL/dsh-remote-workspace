@@ -23,6 +23,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type { DirListing, ExistingWorktree, RemoteWorktreesFace, Snapshot, T as Translate } from './Section.tsx'
 import { RemoteWorktreesSection } from './Section.tsx'
+import { request } from './api.ts'
 import type { RemoteWorktreesKey } from './locales.ts'
 import { en, NS, zh } from './locales.ts'
 import { mountTerminal } from './terminal/index.ts'
@@ -34,33 +35,17 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-/** The host route prefix the management API is registered under. */
-const API = '/dsh-remote-workspace'
-
 /**
- * One JSON request against the management API.
- * @param t - the locale seat, for the failure the host did not describe.
+ * One JSON request against the management API, with this namespace's copy for
+ * a failure the host did not describe.
+ * @param t - the locale seat the fallback message is read through.
  * @param path - the route below the plugin's prefix.
  * @param init - the request to send.
  * @returns the parsed body.
  * @throws when the host answered with a non-2xx status.
  */
 async function call<T>(t: Translate, path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API}${path}`, {
-    credentials: 'same-origin',
-    headers: init?.body === undefined ? {} : { 'content-type': 'application/json' },
-    ...init,
-  })
-  // A failure body is optional: a proxy or an aborted request can answer with
-  // something that is not JSON, and the status below is the fact that matters.
-  const body: unknown = await response.json().catch(() => undefined)
-  if (!response.ok) {
-    const message = typeof body === 'object' && body !== null && 'error' in body
-      ? String((body as { error: unknown }).error)
-      : t('requestFailed', { status: response.status })
-    throw new Error(message)
-  }
-  return body as T
+  return await request<T>(status => t('requestFailed', { status }), path, init)
 }
 
 /**
