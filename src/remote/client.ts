@@ -140,6 +140,39 @@ async function withTimeout<T>(
 }
 
 /**
+ * A writer that hands a failed write to the connection instead of rejecting.
+ *
+ * `vscode-jsonrpc` reports a failed write by rejecting the request from inside
+ * an `async` Promise executor, and nothing awaits that rejection. The host
+ * process sees the orphan and reports a fatal load failure, which is what a
+ * write to a socket destroyed underneath it — a teardown racing an in-flight
+ * call, or a link that just dropped — produces. The failure is not dropped:
+ * the connection is disposed, which rejects the request through the
+ * pending-response path its caller already handles.
+ */
+export class SocketWriter extends StreamMessageWriter {
+  /** Disposes the connection this writer serves; set once that connection exists. */
+  private readonly onWriteFailure: () => void
+
+  /**
+   * @param socket - the socket the connection is written to.
+   * @param onWriteFailure - tears down the owning connection.
+   */
+  constructor(socket: Socket, onWriteFailure: () => void) {
+    super(socket)
+    this.onWriteFailure = onWriteFailure
+  }
+
+  override async write(message: Parameters<StreamMessageWriter['write']>[0]): Promise<void> {
+    try {
+      await super.write(message)
+    } catch {
+      this.onWriteFailure()
+    }
+  }
+}
+
+/**
  * Connect to a daemon and complete the handshake.
  * @param options - address, token, and optional timeout.
  * @returns the live connection, already past `node.hello`.
@@ -163,10 +196,10 @@ export async function connectNode(options: ConnectOptions): Promise<ConnectedNod
     },
   )
 
-  const connection = createMessageConnection(
-    new StreamMessageReader(socket),
-    new StreamMessageWriter(socket),
-  )
+  let disposeConnection: () => void = () => {}
+  const writer = new SocketWriter(socket, () => { disposeConnection() })
+  const connection = createMessageConnection(new StreamMessageReader(socket), writer)
+  disposeConnection = () => { connection.dispose() }
   connection.listen()
 
   const channel: NodeChannel = {
