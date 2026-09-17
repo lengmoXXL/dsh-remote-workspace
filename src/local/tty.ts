@@ -147,5 +147,3 @@ export class LocalTtyRuntime extends TtyRuntime {
     return new LocalTtyHandle(terminal, request.graceMs ?? DEFAULT_GRACE_MS)
   }
 }
-
-export default LocalTtyRuntime

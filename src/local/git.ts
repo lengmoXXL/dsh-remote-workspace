@@ -1,7 +1,7 @@
 /**
  * Git on this host, for the local machine's management operations.
  *
- * These are the same three answers the daemon gives over the wire —
+ * These are the same five answers the daemon gives over the wire —
  * `git.repoState`, `git.worktreeList`, `git.worktreeAdd`, `git.worktreeRemove`,
  * `git.branchDelete` — asked of the git binary in this process instead of over
  * a connection. That is the whole difference between a local machine and a
