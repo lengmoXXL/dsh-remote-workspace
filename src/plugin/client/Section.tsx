@@ -128,6 +128,12 @@ interface WorktreeStatus {
    * cut with no work of anyone else's in it, or one it found on the machine.
    */
   readonly managed: boolean
+  /**
+   * Whether the plugin holds a record for the row. A checkout read straight
+   * from a machine's git has none until it is opened, so release has nothing
+   * to drop and the row offers only open and remove.
+   */
+  readonly held: boolean
   /** Why the host could not read the machine, when it could not. */
   readonly error?: string
 }
@@ -382,7 +388,8 @@ function WorktreeRow({ entry, busy, onRemove, onRelease, onToggleOpen, t }: {
               label: entry.open ? t('closeWorktree') : t('openWorktree'),
               run: onToggleOpen,
             },
-            { id: 'release', label: t('releaseWorktree'), run: onRelease },
+            // A checkout read straight from git has no record to release.
+            ...entry.held ? [{ id: 'release', label: t('releaseWorktree'), run: onRelease }] : [],
             { id: 'remove', label: t('removeWorktree'), danger: true, run: onRemove },
           ]}
         />

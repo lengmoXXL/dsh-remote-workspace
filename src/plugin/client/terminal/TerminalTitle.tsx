@@ -22,7 +22,7 @@ export type TerminalTitleProps =
   & PropsLocale<TerminalNamespace>
 
 /** Draw the terminal tab's title. */
-export function TerminalTitle({ useTabInfo, t }: TerminalTitleProps): ReactNode {
+export function TerminalTitle({ useTabInfo, sessionId, t }: TerminalTitleProps): ReactNode {
   const { tab } = useTabInfo()
-  return useSyncExternalStore(subscribeTerminalLabels, () => terminalLabel(tab.id)) ?? t('type.label')
+  return useSyncExternalStore(subscribeTerminalLabels, () => terminalLabel(sessionId, tab.id)) ?? t('type.label')
 }

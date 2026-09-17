@@ -223,7 +223,7 @@ test('an offline node fails with a typed error and records nothing', async () =>
   assert.deepEqual(anchors.list(), [])
 })
 
-test('list answers from local records without asking the node', async () => {
+test('list answers from held records even when the machine\'s git is quiet', async () => {
   const { manager } = managerWith({
     'git.worktreeAdd': { path: '/srv/checkouts/app/login', branch: 'worktree/login', head: 'abc', main: false },
   })
@@ -478,6 +478,71 @@ test('existing lists what git has, in order, minus the repository itself', async
     { path: '/srv/elsewhere/login', name: 'login', branch: 'worktree/login', registered: false },
     { path: '/srv/elsewhere/detached', name: 'detached', branch: '', registered: false },
   ])
+})
+
+test('list reads a machine\'s git for checkouts nobody adopted', async () => {
+  const { manager } = managerWith({
+    'git.worktreeList': [
+      { path: '/srv/app', branch: 'main', head: 'abc', main: true },
+      { path: '/srv/elsewhere/login', branch: 'worktree/login', head: 'abc', main: false },
+    ],
+  })
+  await repos.upsert({ nodeId: asNodeId('n1'), repoPath: '/srv/app' })
+
+  const rows = worktreesOf(await manager.list())
+  assert.equal(rows.length, 1, 'the checkout git reports is a row')
+  assert.equal(rows[0]?.held, false, 'no record is held for it yet')
+  assert.equal(rows[0]?.open, false)
+  assert.equal(rows[0]?.anchor.name, 'login')
+  assert.equal(rows[0]?.anchor.branch, 'worktree/login')
+})
+
+test('opening a git-reported checkout adopts it and registers it', async () => {
+  const { manager, opened } = managerWithWorkspace({
+    'git.worktreeList': [
+      { path: '/srv/app', branch: 'main', head: 'abc', main: true },
+      { path: '/srv/elsewhere/login', branch: 'worktree/login', head: 'abc', main: false },
+    ],
+  })
+  await repos.upsert({ nodeId: asNodeId('n1'), repoPath: '/srv/app' })
+  const row = (await manager.list()).find(status => status.anchor.kind === 'worktree' && !status.held)
+  assert.ok(row !== undefined)
+
+  const anchor = await manager.open(row.anchor.anchorId)
+  assert.ok(anchor.kind === 'worktree')
+  assert.equal(anchor.branch, 'worktree/login')
+  assert.equal(anchors.list().length, 1, 'opening records the adopted checkout')
+  assert.equal(opened.length, 1, 'and registers it as a workspace')
+})
+
+test('a git-reported checkout is removed straight from git, with no record', async () => {
+  const { manager, calls } = managerWith({
+    'git.worktreeList': [
+      { path: '/srv/app', branch: 'main', head: 'abc', main: true },
+      { path: '/srv/elsewhere/login', branch: 'worktree/login', head: 'abc', main: false },
+    ],
+    'git.worktreeRemove': {},
+  })
+  await repos.upsert({ nodeId: asNodeId('n1'), repoPath: '/srv/app' })
+  const row = (await manager.list()).find(status => status.anchor.kind === 'worktree' && !status.held)
+  assert.ok(row !== undefined)
+
+  const removal = await manager.remove(row.anchor.anchorId, { force: true, deleteBranch: false })
+  assert.equal(removal.branchDeleted, false)
+  assert.equal(anchors.list().length, 0)
+  assert.ok(calls.some(call => call.method === 'git.worktreeRemove'))
+})
+
+test('a repository whose git cannot be read does not blank the rest of the listing', async () => {
+  const { manager } = managerWith({
+    'git.worktreeAdd': { path: '/srv/checkouts/app/login', branch: 'worktree/login', head: 'abc', main: false },
+    'git.worktreeList': new NodeRequestError({ code: 'GIT_COMMAND_FAILED', message: 'git exploded' }),
+  })
+  await manager.create(draft)
+
+  const statuses = await manager.list()
+  assert.equal(statuses.length, 1, 'the held anchor still lists')
+  assert.equal(statuses[0]?.error, undefined)
 })
 
 test('a caller may place the checkout itself', async () => {

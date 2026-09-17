@@ -814,7 +814,11 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     await waitForForm(page, anyOf('releaseWorktreeTitle'), 'the release confirmation')
     // The confirming button names the action: releasing is not removing.
     await clickInDialog(page, exact('releaseWorktree'))
-    await waitFor(page, `!document.body.innerText.includes('hand-cut')`, 'the row to go')
+    // Git still lists the checkout, so releasing only drops the plugin's record:
+    // the row survives as one it has not adopted, offering open and remove.
+    await openMenu(page, 'hand-cut')
+    await waitFor(page, controlsFor('openWorktree', 'removeWorktree'), 'the released row to offer open and remove')
+    await closeMenu(page)
     assert.match(
       await readFile(join(instance.root, 'remote-root', 'hand-cut', 'README.md'), 'utf8'),
       /fixture/,

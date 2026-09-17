@@ -1,7 +1,7 @@
 /**
  * The browser's terminals, and the sockets that carry them.
  *
- * One entry per Sidebar tab, keyed by the tab record's id, and it outlives the
+ * One entry per Sidebar tab, keyed by its Session and tab record id, and it outlives the
  * body that draws it: the right Sidebar renders only its active tab, so
  * switching tabs unmounts the terminal's React tree, and a terminal that died
  * with its component would lose the shell every time somebody looked at a
@@ -73,6 +73,8 @@ export interface TerminalMount {
 
 /** One live browser terminal. */
 interface Entry {
+  /** The map key: Session and tab, because tab ids are minted per Session. */
+  readonly key: string
   readonly tabId: string
   readonly sessionId: string
   readonly signal: AbortSignal
@@ -110,6 +112,10 @@ interface Entry {
    * waiting for them, so they are suppressed while the replay parses.
    */
   replaying: boolean
+  /** Reconnect attempts since the last live socket, for backoff. */
+  reconnectAttempts: number
+  /** The pending reconnect, while one is scheduled. */
+  reconnectTimer?: ReturnType<typeof setTimeout> | undefined
 }
 
 /** The monospace stack a terminal is drawn in. */
@@ -117,6 +123,12 @@ const MONO_FONT = "'SF Mono', 'Menlo', 'DejaVu Sans Mono', 'Cascadia Mono', 'Con
 
 /** Scrollback lines one terminal keeps in the browser. */
 const SCROLLBACK_LINES = 5000
+
+/** First delay before a dropped socket is reconnected; it doubles per attempt. */
+const RECONNECT_BASE_MS = 500
+
+/** Ceiling on the reconnect delay, so a long outage is still retried promptly. */
+const RECONNECT_MAX_MS = 5000
 
 /** Where this page remembers one terminal per Session, across reloads. */
 const MEMORY_KEY = 'dsh-remote-workspace.terminal'
@@ -170,7 +182,18 @@ function forget(sessionId: string, id: string | undefined): void {
   if (id !== undefined && remembered(sessionId) === id) memorize(sessionId, null)
 }
 
-/** Every terminal this page owns, keyed by tab record id. */
+/**
+ * The key one Session's terminal tab is stored under.
+ *
+ * Tab record ids are minted per Session surface, so two Sessions can both name
+ * a tab `t1`; the Session is part of the key so one can never read the other's
+ * shell.
+ */
+function tabKey(sessionId: string, tabId: string): string {
+  return `${sessionId}\u0000${tabId}`
+}
+
+/** Every terminal this page owns, keyed by Session and tab record id. */
 const entries = new Map<string, Entry>()
 
 /** Each tab's chosen shell, until that tab closes; the body may unmount and return. */
@@ -188,21 +211,23 @@ const labelListeners = new Set<() => void>()
  * Called by the chooser before the tab's first terminal exists; the body then
  * mounts that shell. The choice is kept by tab id, so unmounting the body —
  * switching Sidebar tabs, collapsing the column — does not ask again.
+ * @param sessionId - the Session the tab belongs to.
  * @param tabId - the Sidebar tab record's id.
  * @param target - the shell to attach to, or a fresh one.
  */
-export function chooseTerminal(tabId: string, target: TerminalTarget): void {
-  targets.set(tabId, target)
+export function chooseTerminal(sessionId: string, tabId: string, target: TerminalTarget): void {
+  targets.set(tabKey(sessionId, tabId), target)
   for (const listener of targetListeners) listener()
 }
 
 /**
  * One tab's chosen shell.
+ * @param sessionId - the Session the tab belongs to.
  * @param tabId - the Sidebar tab record's id.
  * @returns the choice, or undefined while the tab is still unchosen.
  */
-export function terminalTarget(tabId: string): TerminalTarget | undefined {
-  return targets.get(tabId)
+export function terminalTarget(sessionId: string, tabId: string): TerminalTarget | undefined {
+  return targets.get(tabKey(sessionId, tabId))
 }
 
 /**
@@ -233,11 +258,12 @@ export function subscribeTerminalLabels(listener: () => void): () => void {
 
 /**
  * The host-assigned label of one tab's terminal.
+ * @param sessionId - the Session the tab belongs to.
  * @param tabId - the Sidebar tab record's id.
  * @returns the label, or null before the host has answered with one.
  */
-export function terminalLabel(tabId: string): string | null {
-  return entries.get(tabId)?.label ?? null
+export function terminalLabel(sessionId: string, tabId: string): string | null {
+  return entries.get(tabKey(sessionId, tabId))?.label ?? null
 }
 
 /**
@@ -246,11 +272,14 @@ export function terminalLabel(tabId: string): string | null {
  * Derived from the entries rather than kept as a second map, so it cannot
  * drift: an entry knows its shell's id from the moment it is created, and a
  * closed tab or an ended shell takes its entry with it.
+ * @param sessionId - the Session to look in.
  * @param id - the terminal's registry id.
- * @returns the tab id drawing that shell, or undefined while no tab does.
+ * @returns the tab id drawing that shell, or undefined while no tab in this Session does.
  */
-export function terminalTab(id: string): string | undefined {
-  for (const [tabId, entry] of entries) if (entry.id === id) return tabId
+export function terminalTab(sessionId: string, id: string): string | undefined {
+  for (const entry of entries.values()) {
+    if (entry.sessionId === sessionId && entry.id === id) return entry.tabId
+  }
   return undefined
 }
 
@@ -329,6 +358,7 @@ function create(mount: TerminalMount): Entry {
   })
 
   const entry: Entry = {
+    key: tabKey(mount.sessionId, mount.tabId),
     tabId: mount.tabId,
     sessionId: mount.sessionId,
     signal: mount.signal,
@@ -348,6 +378,7 @@ function create(mount: TerminalMount): Entry {
     fixedSize: false,
     pending: 'open',
     replaying: false,
+    reconnectAttempts: 0,
   }
 
   // A size the browser measures before the socket is up is what the open frame
@@ -367,7 +398,7 @@ function create(mount: TerminalMount): Entry {
   // without aborting this signal, and closing the tab aborts it — the socket
   // closes, the host detaches, and the shell keeps running.
   mount.signal.addEventListener('abort', () => {
-    dispose(mount.tabId)
+    dispose(tabKey(mount.sessionId, mount.tabId))
   }, { once: true })
 
   return entry
@@ -423,6 +454,7 @@ function wire(entry: Entry): void {
       case 'ready':
         // No history arrived, so there is nothing left to suppress.
         entry.replaying = false
+        entry.reconnectAttempts = 0
         entry.id = frame.id
         entry.label = frame.label
         memorize(entry.sessionId, frame.id)
@@ -457,8 +489,33 @@ function wire(entry: Entry): void {
     }
   })
   socket.addEventListener('close', () => {
-    if (entry.state.kind === 'opening' || entry.state.kind === 'live') emit(entry, { kind: 'closed' })
+    // An ended or failed shell has nothing to come back to; a dropped socket
+    // does, because the host keeps the terminal while its process lives.
+    if (entry.state.kind === 'ended' || entry.state.kind === 'failed') return
+    emit(entry, { kind: 'closed' })
+    scheduleReconnect(entry)
   })
+}
+
+/**
+ * Reconnect one entry's dropped socket, if it still belongs to this page.
+ *
+ * The shell outlives the socket, so the entry reattaches to the id it holds and
+ * keeps its scrollback. Attempts back off so an unreachable host does not become
+ * a busy loop.
+ * @param entry - the terminal whose socket dropped.
+ */
+function scheduleReconnect(entry: Entry): void {
+  if (entries.get(entry.key) !== entry || entry.reconnectTimer !== undefined) return
+  const delay = Math.min(RECONNECT_BASE_MS * 2 ** entry.reconnectAttempts, RECONNECT_MAX_MS)
+  entry.reconnectTimer = setTimeout(() => {
+    entry.reconnectTimer = undefined
+    if (entries.get(entry.key) !== entry) return
+    entry.reconnectAttempts += 1
+    entry.socket = new WebSocket(socketUrl())
+    wire(entry)
+    emit(entry, { kind: 'opening' })
+  }, delay)
 }
 
 /**
@@ -467,15 +524,17 @@ function wire(entry: Entry): void {
  * The socket close is what detaches: the host keeps the PTY and its retained
  * output, so the id is still remembered for a reattach. Ending the shell is
  * explicit — {@link endTerminal} — or the process doing it on its own.
+ * @param key - the Session-and-tab key to drop.
  */
-function dispose(tabId: string): void {
-  const entry = entries.get(tabId)
+function dispose(key: string): void {
+  const entry = entries.get(key)
   // The tab is gone whether or not a shell ever existed for it; a choice made
   // for it must not outlive it.
-  targets.delete(tabId)
+  targets.delete(key)
   if (entry === undefined) return
-  entries.delete(tabId)
+  entries.delete(key)
   emitLabels()
+  if (entry.reconnectTimer !== undefined) clearTimeout(entry.reconnectTimer)
   entry.observer.disconnect()
   // No `close` frame: closing the socket only detaches, and the host keeps the
   // shell for as long as its process lives.
@@ -492,18 +551,19 @@ function dispose(tabId: string): void {
  * choice sends the body back to the chooser, where another shell can be picked.
  * A socket that has already dropped cannot carry the frame, so the registry id
  * comes back for the caller to end through the host's route.
+ * @param sessionId - the Session the tab belongs to.
  * @param tabId - the Sidebar tab record's id.
  * @returns the registry id a caller must end over the host route, when the socket could not carry the frame.
  */
-export function endTerminal(tabId: string): string | undefined {
-  const entry = entries.get(tabId)
+export function endTerminal(sessionId: string, tabId: string): string | undefined {
+  const entry = entries.get(tabKey(sessionId, tabId))
   let stranded: string | undefined
   if (entry?.id !== undefined) {
     forget(entry.sessionId, entry.id)
     if (entry.socket.readyState === WebSocket.OPEN) send(entry, { t: 'close' })
     else stranded = entry.id
   }
-  dispose(tabId)
+  dispose(tabKey(sessionId, tabId))
   // The choice is gone, so every body on this tab draws the chooser again.
   for (const listener of targetListeners) listener()
   return stranded
@@ -511,11 +571,12 @@ export function endTerminal(tabId: string): string | undefined {
 
 /**
  * The state of one terminal, for a body that is about to mount.
+ * @param sessionId - the Session the tab belongs to.
  * @param tabId - the Sidebar tab record's id.
  * @returns the live state, or the opening state for a tab with no terminal yet.
  */
-export function terminalState(tabId: string): TerminalState {
-  return entries.get(tabId)?.state ?? { kind: 'opening' }
+export function terminalState(sessionId: string, tabId: string): TerminalState {
+  return entries.get(tabKey(sessionId, tabId))?.state ?? { kind: 'opening' }
 }
 
 /**
@@ -524,9 +585,10 @@ export function terminalState(tabId: string): TerminalState {
  * @returns the detach function: the terminal survives it, the drawing does not.
  */
 export function mountTerminal(mount: TerminalMount): () => void {
-  const existing = entries.get(mount.tabId)
+  const key = tabKey(mount.sessionId, mount.tabId)
+  const existing = entries.get(key)
   const entry = existing ?? create(mount)
-  if (existing === undefined) entries.set(mount.tabId, entry)
+  if (existing === undefined) entries.set(key, entry)
   entry.onState = mount.onState
   entry.host = mount.host
   mount.host.appendChild(entry.element)
@@ -547,12 +609,18 @@ export function mountTerminal(mount: TerminalMount): () => void {
  * its process lives — so restarting reconnects to the id this entry already
  * knows and keeps its scrollback. A shell that exited has no id left to reach,
  * and a failed allocation has none yet, so those start over.
+ * @param sessionId - the Session the tab belongs to.
  * @param tabId - the Sidebar tab record's id.
  */
-export function restartTerminal(tabId: string): void {
-  const entry = entries.get(tabId)
+export function restartTerminal(sessionId: string, tabId: string): void {
+  const entry = entries.get(tabKey(sessionId, tabId))
   if (entry === undefined) return
+  if (entry.reconnectTimer !== undefined) {
+    clearTimeout(entry.reconnectTimer)
+    entry.reconnectTimer = undefined
+  }
   if (entry.state.kind === 'closed' && entry.id !== undefined) {
+    entry.reconnectAttempts = 0
     entry.socket = new WebSocket(socketUrl())
     wire(entry)
     emit(entry, { kind: 'opening' })
@@ -570,9 +638,9 @@ export function restartTerminal(tabId: string): void {
     // one rather than attaching to an id the host may already have released.
     target: { kind: 'new' },
   }
-  dispose(tabId)
+  dispose(tabKey(sessionId, tabId))
   const replacement = create(mount)
-  entries.set(tabId, replacement)
+  entries.set(tabKey(sessionId, tabId), replacement)
   replacement.fit.fit()
   replacement.term.focus()
 }

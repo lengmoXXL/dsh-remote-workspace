@@ -142,7 +142,7 @@ export function TerminalPicker({
             {offered.map(entry => {
               // A shell another tab is drawing is brought forward instead of
               // attached a second time; one no tab holds attaches here.
-              const owner = terminalTab(entry.id)
+              const owner = terminalTab(sessionId, entry.id)
               return (
                 <div className={css.row} key={entry.id}>
                   <button

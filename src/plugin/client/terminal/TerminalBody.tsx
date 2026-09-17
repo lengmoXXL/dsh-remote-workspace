@@ -66,9 +66,9 @@ export function TerminalBody(
   { useTabInfo, sessionId, list, close, openAnother, showTab, t }: TerminalBodyProps,
 ): ReactNode {
   const { tab } = useTabInfo()
-  const target = useSyncExternalStore(subscribeTerminalTargets, () => terminalTarget(tab.id))
+  const target = useSyncExternalStore(subscribeTerminalTargets, () => terminalTarget(sessionId, tab.id))
   const screen = useRef<HTMLDivElement | null>(null)
-  const [state, setState] = useState<TerminalState>(() => terminalState(tab.id))
+  const [state, setState] = useState<TerminalState>(() => terminalState(sessionId, tab.id))
 
   useLayoutEffect(() => {
     const host = screen.current
@@ -82,7 +82,7 @@ export function TerminalBody(
         sessionId={sessionId}
         list={list}
         close={close}
-        onChoose={choice => { chooseTerminal(tab.id, choice) }}
+        onChoose={choice => { chooseTerminal(sessionId, tab.id, choice) }}
         onShow={showTab}
         onCancel={() => { tab.actions.close() }}
         t={t}
@@ -95,14 +95,13 @@ export function TerminalBody(
   // has nothing left to end and offers a restart instead.
   const endable = state.kind === 'opening' || state.kind === 'live' || state.kind === 'closed'
   const end = (): void => {
-    const stranded = endTerminal(tab.id)
+    const stranded = endTerminal(sessionId, tab.id)
     // A socket that had already dropped could not carry the frame, and the
     // shell is still addressable, so the chooser's own route ends it.
     if (stranded !== undefined) void close(stranded).catch(() => undefined)
   }
   return (
     <div className={css.pane}>
-      <div className={css.screen} ref={screen} />
       <div className={css.bar}>
         <span className={css.path} title={state.kind === 'live' ? state.cwd : undefined}>
           {statusText(state, t)}
@@ -131,7 +130,7 @@ export function TerminalBody(
               size="sm"
               variant="ghost"
               onClick={() => {
-                restartTerminal(tab.id)
+                restartTerminal(sessionId, tab.id)
               }}
             >
               {t('action.restart')}
@@ -149,6 +148,7 @@ export function TerminalBody(
           {t('action.newTab')}
         </Button>
       </div>
+      <div className={css.screen} ref={screen} />
     </div>
   )
 }
