@@ -40,7 +40,6 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
  * a failure the host did not describe.
  * @param t - the locale seat the fallback message is read through.
  * @param path - the route below the plugin's prefix.
- * @param init - the request to send.
  * @returns the parsed body.
  * @throws when the host answered with a non-2xx status.
  */

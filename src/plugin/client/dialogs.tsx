@@ -292,7 +292,6 @@ function defaultWorktreePath(root: string | undefined, repoPath: string, name: s
   const trimmed = name.trim()
   return trimmed === '' ? `${base}/` : `${base}/${trimmed}`
 }
-/** Register a repository on a machine. */
 export function AddRepoDialog({ nodeId, busy, onClose, onSubmit, listDirs, t }: {
   nodeId: NodeId
   busy: boolean

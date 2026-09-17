@@ -163,7 +163,6 @@ export interface Snapshot {
 export interface RemoteWorktreesFace {
   /** Read machines, repositories, and worktrees with their live state. */
   load(): Promise<Snapshot>
-  /** Add a machine. */
   addNode(draft: {
     ssh: { target: string; port?: number; identityFile?: string }
     token: string
@@ -171,11 +170,8 @@ export interface RemoteWorktreesFace {
   }): Promise<void>
   /** Remove a machine and its repository registrations. */
   removeNode(nodeId: NodeId): Promise<void>
-  /** Open a connection to a machine. */
   connectNode(nodeId: NodeId): Promise<void>
-  /** Close a machine's connection. */
   disconnectNode(nodeId: NodeId): Promise<void>
-  /** Register a repository on a machine. */
   addRepo(draft: { nodeId: NodeId; repoPath: string; name?: string }): Promise<void>
   /** Drop a repository registration and close the directory it was opened as. */
   removeRepo(repoId: RepoId): Promise<void>
@@ -183,7 +179,6 @@ export interface RemoteWorktreesFace {
   openDirectory(repoId: RepoId): Promise<void>
   /** Close a directory's own workspace, dropping its anchor. */
   closeDirectory(repoId: RepoId): Promise<void>
-  /** List one directory level on a machine. */
   listDirs(nodeId: NodeId, path: string): Promise<DirListing>
   /** Cut a worktree from a registered repository; `path` overrides the default. */
   createWorktree(draft: { repoId: RepoId; name: string; path?: string }): Promise<void>
@@ -383,7 +378,6 @@ function WorktreeRow({ entry, busy, onRemove, onRelease, onToggleOpen, t }: {
   )
 }
 
-/** The Remote workspaces settings section. */
 export function RemoteWorktreesSection(props: SectionProps) {
   const { t } = props
   const [snapshot, setSnapshot] = useState<Snapshot | undefined>(undefined)
