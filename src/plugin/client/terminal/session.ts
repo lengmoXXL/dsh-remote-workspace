@@ -426,7 +426,7 @@ function wire(entry: Entry): void {
     } else {
       entry.pending = 'attach'
       entry.replaying = true
-      send(entry, { t: 'attach', id: entry.id, cols, rows })
+      send(entry, { t: 'attach', sessionId: entry.sessionId, id: entry.id, cols, rows })
     }
   })
   socket.addEventListener('message', (event: MessageEvent<unknown>) => {

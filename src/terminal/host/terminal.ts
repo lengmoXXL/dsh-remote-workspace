@@ -187,8 +187,11 @@ export function attachTerminal(ctx: Context, registry: TerminalRegistry, socket:
     }
     let entry
     try {
-      // The registry replays the retained output to this sink before anything
-      // new can arrive, so a remounted terminal shows its history in order.
+      // Ownership first: an id alone must not let one Session watch another's
+      // shell. The registry replays the retained output to this sink before
+      // anything new can arrive, so a remounted terminal shows its history in
+      // order.
+      registry.requireOwned(frame.sessionId, frame.id)
       entry = registry.attach(frame.id, sink)
     } catch (error: unknown) {
       // A terminal that is gone is the browser's cue to open a fresh one.

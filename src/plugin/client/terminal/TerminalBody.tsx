@@ -101,7 +101,7 @@ export function TerminalBody(
     if (stranded !== undefined) void close(stranded).catch(() => undefined)
   }
   return (
-    <div className={css.pane}>
+    <div className={css.pane} data-terminal-session={sessionId}>
       <div className={css.bar}>
         <span className={css.path} title={state.kind === 'live' ? state.cwd : undefined}>
           {statusText(state, t)}

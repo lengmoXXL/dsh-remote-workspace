@@ -126,7 +126,7 @@ export function TerminalPicker({
         </>
       )}
     >
-      <div className={css.picker} data-terminal-picker>
+      <div className={css.picker} data-terminal-picker data-terminal-session={sessionId}>
         {error === undefined ? null : (
           <div className={css.alert} role="alert">
             <IconWarningOutline16 />

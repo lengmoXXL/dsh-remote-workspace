@@ -594,8 +594,11 @@ async function attachAndRead(page: FirefoxPage, id: string): Promise<{
         resolve({ ready, output, error: error ?? null })
       }
       const timer = setTimeout(() => finish('timed out waiting for the marker'), 30000)
+      // The Session is read from the mounted tab, the way the plugin's own
+      // client knows it: an attach outside the owning Session is refused.
+      const session = document.querySelector('[data-terminal-session]')?.getAttribute('data-terminal-session') ?? ''
       socket.addEventListener('open', () => {
-        socket.send(JSON.stringify({ t: 'attach', id: ${JSON.stringify(id)}, cols: 80, rows: 24 }))
+        socket.send(JSON.stringify({ t: 'attach', sessionId: session, id: ${JSON.stringify(id)}, cols: 80, rows: 24 }))
       })
       socket.addEventListener('message', (event) => {
         if (event.data instanceof ArrayBuffer) {
@@ -1041,7 +1044,7 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     )
     const endedProbe = await attachAndRead(page, firstId)
     assert.equal(endedProbe.ready, null, 'End terminal left a shell to reattach to')
-    assert.match(String(endedProbe.error), /not open|exited/)
+    assert.match(String(endedProbe.error), /is open in this session|exited/)
     await shot('12c-terminal-ended')
 
     // The tab stayed open on the shell-less chooser, so the New terminal entry

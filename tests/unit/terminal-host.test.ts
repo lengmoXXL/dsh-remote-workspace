@@ -324,7 +324,7 @@ test('an attach frame reattaches to a detached terminal and replays its output',
   await new Promise(resolve => setImmediate(resolve))
   const second = fakeSocket()
   attachTerminal(ctx, registry, second.socket)
-  second.send({ t: 'attach', id: 't1', cols: 90, rows: 30 })
+  second.send({ t: 'attach', sessionId: 'session-1', id: 't1', cols: 90, rows: 30 })
   await new Promise(resolve => setImmediate(resolve))
 
   assert.deepEqual(second.frames, [
@@ -346,12 +346,36 @@ test('an attach frame for a terminal that is gone answers with a readable error'
   const browser = fakeSocket()
   attachTerminal(ttyContext(async () => terminal.handle, '/w/live'), registry, browser.socket)
 
-  browser.send({ t: 'attach', id: 't9', cols: 80, rows: 24 })
+  browser.send({ t: 'attach', sessionId: 'session-1', id: 't9', cols: 80, rows: 24 })
   await new Promise(resolve => setImmediate(resolve))
 
   const frames = browser.frames as { readonly t: string; readonly message?: string }[]
   assert.deepEqual(frames.map(frame => frame.t), ['error'])
-  assert.match(frames[0]?.message ?? '', /terminal "t9" is not open/)
+  assert.match(frames[0]?.message ?? '', /no terminal "t9" is open in this session/)
+})
+
+test('an attach frame cannot reach a terminal another Session owns', async () => {
+  const terminal = fakeTerminal()
+  const registry = terminalRegistry(async () => terminal.handle)
+  const ctx = ttyContext(async () => terminal.handle, '/w/live')
+  const first = fakeSocket()
+  attachTerminal(ctx, registry, first.socket)
+  first.send({ t: 'open', sessionId: 'session-1', cols: 80, rows: 24 })
+  await new Promise(resolve => setImmediate(resolve))
+
+  // The id is known, but it belongs to another Session: the attach is refused
+  // instead of replaying the shell, so nothing crosses the boundary.
+  const second = fakeSocket()
+  attachTerminal(ctx, registry, second.socket)
+  second.send({ t: 'attach', sessionId: 'session-2', id: 't1', cols: 80, rows: 24 })
+  await new Promise(resolve => setImmediate(resolve))
+
+  const frames = second.frames as { readonly t: string; readonly message?: string }[]
+  assert.deepEqual(frames.map(frame => frame.t), ['error'])
+  assert.match(frames[0]?.message ?? '', /no terminal "t1" is open in this session/)
+  assert.equal(terminal.terminations(), 0, 'the refused attach did not touch the shell')
+  assert.deepEqual(registry.listFor('session-2'), [])
+  assert.equal(registry.requireOwned('session-1', 't1').id, 't1')
 })
 
 test('a close frame ends the terminal at once, while a dropped socket only detaches it', async () => {

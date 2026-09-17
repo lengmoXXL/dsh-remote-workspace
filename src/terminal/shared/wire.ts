@@ -43,6 +43,8 @@ export interface OpenFrame {
  */
 export interface AttachFrame {
   readonly t: 'attach'
+  /** The Session that owns the terminal; attaching outside it is refused. */
+  readonly sessionId: string
   /** The registry id a previous {@link ReadyFrame} assigned. */
   readonly id: string
   /** Column count, from the browser's own measurement. */
