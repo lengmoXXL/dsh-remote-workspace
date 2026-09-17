@@ -357,16 +357,15 @@ const LOCAL_ID_PREFIX = 'local:'
 
 /** The id one local path is addressed by. */
 function localAnchorId(kind: 'worktree' | 'directory', path: string, repoPath: string): AnchorId {
-  const encoded = (value: string): string => Buffer.from(value, 'utf8').toString('base64url')
   return asAnchorId(kind === 'directory'
-    ? `${LOCAL_ID_PREFIX}directory:${encoded(path)}`
-    : `${LOCAL_ID_PREFIX}worktree:${encoded(path)}:${encoded(repoPath)}`)
+    ? `${LOCAL_ID_PREFIX}directory:${encodePart(path)}`
+    : `${LOCAL_ID_PREFIX}worktree:${encodePart(path)}:${encodePart(repoPath)}`)
 }
 
 /** Prefix that marks an id as naming a checkout git reports on a machine. */
 const REMOTE_ID_PREFIX = 'remote:'
 
-/** One URL-safe encoding of a path, for composing a git-reported id. */
+/** One URL-safe encoding of a value, for composing a derived id. */
 const encodePart = (value: string): string => Buffer.from(value, 'utf8').toString('base64url')
 
 /** The inverse of {@link encodePart}. */
@@ -479,8 +478,6 @@ async function localStatuses(deps: WorktreeManagerDeps): Promise<readonly Worktr
     const checkouts = await listWorktrees(repo.repoPath).catch(() => [])
     for (const checkout of checkouts.slice(1)) {
       // A checkout whose directory is gone is git's own leftover rather than a
-      // row: nothing can be opened or removed through it.
-      // A checkout whose directory is gone is git's own leftover rather than a
       // row: nothing can be opened or removed through it. An unreadable one is
       // skipped the same way, so one bad checkout cannot blank the others.
       if (await localPathType(checkout.path).catch(() => undefined) !== 'directory') continue
@@ -501,6 +498,25 @@ async function localStatuses(deps: WorktreeManagerDeps): Promise<readonly Worktr
     }
   }
   return statuses
+}
+
+/** Register a repository nobody has registered yet, keeping a known name. */
+async function registerRepoIfUnknown(
+  deps: WorktreeManagerDeps,
+  nodeId: NodeId,
+  repoPath: string,
+): Promise<void> {
+  if (deps.repos.find({ nodeId, repoPath }) === undefined) {
+    await deps.repos.upsert({ nodeId, repoPath })
+  }
+}
+
+/** Narrow a record to a worktree, refusing the repository directory. */
+function requireWorktree(anchor: AnchorRecord): WorktreeAnchor {
+  if (anchor.kind !== 'worktree') {
+    throw new Error(`"${anchor.name}" is the repository directory, not a worktree; close it instead`)
+  }
+  return anchor
 }
 
 /** One local row by the id a caller holds, or undefined when none carries it. */
@@ -551,11 +567,7 @@ async function createLocalWorktree(deps: WorktreeManagerDeps, draft: WorktreeDra
     branch,
     createdAt: new Date().toISOString(),
   }
-  // Known repositories keep the name a person gave them; a worktree is only
-  // ever what registers a repository nobody has registered yet.
-  if (deps.repos.find({ nodeId: draft.nodeId, repoPath }) === undefined) {
-    await deps.repos.upsert({ nodeId: draft.nodeId, repoPath })
-  }
+  await registerRepoIfUnknown(deps, draft.nodeId, repoPath)
   await registerWorkspace(deps, anchor)
   return anchor
 }
@@ -671,12 +683,6 @@ export function createWorktreeManager(deps: WorktreeManagerDeps): WorktreeManage
       })
     }
     return channel
-  }
-
-  const anchorById = (anchorId: AnchorId): AnchorRecord => {
-    const anchor = deps.anchors.get(anchorId)
-    if (anchor === undefined) throw new Error(`no anchor "${anchorId}"`)
-    return anchor
   }
 
   /** The machine's own checkouts for one repository, minus its main one. */
@@ -857,11 +863,7 @@ export function createWorktreeManager(deps: WorktreeManagerDeps): WorktreeManage
         branch: checkedOut,
         origin: 'created',
       })
-      // Known repositories keep the name a person gave them; a worktree is
-      // only ever what registers a repository nobody has registered yet.
-      if (deps.repos.find({ nodeId: draft.nodeId, repoPath }) === undefined) {
-        await deps.repos.upsert({ nodeId: draft.nodeId, repoPath })
-      }
+      await registerRepoIfUnknown(deps, draft.nodeId, repoPath)
       await registerWorkspace(deps, anchor)
       return { ...anchor, kind: 'worktree', branch: checkedOut }
     },
@@ -923,27 +925,16 @@ export function createWorktreeManager(deps: WorktreeManagerDeps): WorktreeManage
       if (anchorId.startsWith(LOCAL_ID_PREFIX)) {
         const anchor = await localEntry(deps, anchorId)
         if (anchor === undefined) throw new Error(`no worktree "${anchorId}" on this machine`)
-        // `git worktree remove` on the repository directory would delete the
-        // person's own checkout, so only a worktree can be removed. A directory
-        // is closed instead, which touches nothing on the machine.
-        if (anchor.kind !== 'worktree') {
-          throw new Error(`"${anchor.name}" is the repository directory, not a worktree; close it instead`)
-        }
-        return await removeLocalWorktree(deps, anchor, options)
+        return await removeLocalWorktree(deps, requireWorktree(anchor), options)
       }
       const discovered = parseRemoteAnchorId(anchorId)
       if (discovered !== undefined) {
         const held = heldRemote(discovered)
         return held === undefined ? await removeDiscovered(discovered, options) : await removeRemote(held, options)
       }
-      const anchor = anchorById(anchorId)
-      // `git worktree remove` on the repository directory would delete the
-      // person's own checkout, so only a worktree can be removed. A directory
-      // anchor is closed instead, which touches nothing on the machine.
-      if (anchor.kind !== 'worktree') {
-        throw new Error(`"${anchor.name}" is the repository directory, not a worktree; close it instead`)
-      }
-      return await removeRemote(anchor, options)
+      const anchor = deps.anchors.get(anchorId)
+      if (anchor === undefined) throw new Error(`no anchor "${anchorId}"`)
+      return await removeRemote(requireWorktree(anchor), options)
     },
 
     async open(anchorId) {
