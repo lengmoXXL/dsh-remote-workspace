@@ -250,7 +250,7 @@ export interface TunnelDeps {
 export interface TunnelProcess {
   /** Resolves once the process has exited. */
   readonly exited: Promise<void>
-  /** Everything the process wrote to stderr so far, or a promise for it. */
+  /** Everything the process wrote to stderr so far. */
   readonly diagnostics: () => string
   /** Terminate the process. */
   kill(): void
