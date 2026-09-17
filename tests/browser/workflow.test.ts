@@ -132,6 +132,30 @@ function controlsFor(...keys: Key[]): string {
   }).join(' && ')
 }
 
+/**
+ * Wait until one row's menu offers every named action.
+ *
+ * Reading a menu across separate page calls races its own close, so each
+ * attempt opens it, reads its items at once, and closes it again.
+ * @param page - the page to act on.
+ * @param name - the object whose row carries the menu.
+ * @param keys - the locale keys the menu must offer.
+ */
+async function waitForRowActions(page: FirefoxPage, name: string, keys: readonly Key[]): Promise<void> {
+  const wanted = keys.map(key => [zh[key], en[key]] as const)
+  const expression = '[...(document.querySelector(\'[role="menu"]\')?.querySelectorAll(\'button\') ?? [])]'
+    + '.map(b => (b.textContent ?? \'\').trim())'
+  const deadline = Date.now() + 20_000
+  for (;;) {
+    await openMenu(page, name)
+    const items = await page.evaluate<readonly string[]>(expression)
+    await closeMenu(page)
+    if (wanted.every(pair => pair.some(text => items.includes(text)))) return
+    if (Date.now() > deadline) throw new Error('timed out waiting for ' + keys.join(', ') + ' on ' + name)
+    await new Promise<void>(resolve => { setTimeout(resolve, 200) })
+  }
+}
+
 /** The open form's controls and path field, which the picker is driven with. */
 const FORM_PARTS = `
   const dialogs = [...document.querySelectorAll('[role="dialog"][aria-label]')]
@@ -747,8 +771,12 @@ test('a remote worktree is created and removed through the browser', { timeout: 
       'worktree/verify',
       'the branch outlives the checkout by default',
     )
+    // Git still lists other checkouts the fixture made, and those are rows
+    // now; only the records this plugin holds have to be gone.
     assert.equal(
-      (await api<{ worktrees: readonly unknown[] }>(instance, '/worktrees')).worktrees.length, 0,
+      (await api<{ worktrees: readonly { held: boolean }[] }>(instance, '/worktrees')).worktrees
+        .filter(row => row.held).length,
+      0,
       'the anchor store is empty again',
     )
     // The workspace entry goes with the anchor, so the sidebar cannot keep a
@@ -795,19 +823,12 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     await waitForBranchGone(instance.repoPath, 'worktree/scratch')
     await waitFor(page, `!document.body.innerText.includes('scratch')`, 'the sidebar to drop the second workspace')
 
-    // A checkout the plugin never cut: it is adopted from the machine's own
-    // list, opened as a workspace, and then closed without being touched.
-    await chooseAction(page, 'demo-repo', 'adoptWorktree')
-    await waitForForm(page, exact('adoptWorktree'), 'the open-worktree dialog')
-    await waitForText(page, 'hand-cut', 'the hand-cut checkout to be listed')
-    await clickInDialog(page, /hand-cut/)
-    await waitForFormGone(page, exact('adoptWorktree'), 'the open-worktree dialog to close')
-    await waitForText(page, 'hand-cut', 'the adopted row')
-    // A checkout the plugin found offers both ways out as well.
-    await openMenu(page, 'hand-cut')
-    await waitFor(page, controlsFor('releaseWorktree', 'removeWorktree'), 'both actions on an adopted row')
-    await closeMenu(page)
+    // A checkout the plugin never cut is a row already, read straight from the
+    // machine's git; opening it adopts it and registers it as a workspace.
+    await chooseAction(page, 'hand-cut', 'openWorktree')
     await waitFor(page, `document.body.innerText.includes('hand-cut · demo-repo')`, 'the adopted workspace')
+    // A checkout the plugin found offers both ways out as well.
+    await waitForRowActions(page, 'hand-cut', ['releaseWorktree', 'removeWorktree'])
     await shot('07b-adopted-worktree')
 
     await chooseAction(page, 'hand-cut', 'releaseWorktree')
@@ -816,23 +837,17 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     await clickInDialog(page, exact('releaseWorktree'))
     // Git still lists the checkout, so releasing only drops the plugin's record:
     // the row survives as one it has not adopted, offering open and remove.
-    await openMenu(page, 'hand-cut')
-    await waitFor(page, controlsFor('openWorktree', 'removeWorktree'), 'the released row to offer open and remove')
-    await closeMenu(page)
+    await waitForRowActions(page, 'hand-cut', ['openWorktree', 'removeWorktree'])
     assert.match(
       await readFile(join(instance.root, 'remote-root', 'hand-cut', 'README.md'), 'utf8'),
       /fixture/,
       'the released checkout is still on the machine',
     )
 
-    // The same checkout can be brought back and, this time, deleted: one the
+    // The same checkout can be opened again and, this time, deleted: one the
     // plugin found on the machine is still the operator's to remove.
-    await chooseAction(page, 'demo-repo', 'adoptWorktree')
-    await waitForForm(page, exact('adoptWorktree'), 'the second open-worktree dialog')
-    await waitForText(page, 'hand-cut', 'the checkout to be listed again')
-    await clickInDialog(page, /hand-cut/)
-    await waitForFormGone(page, exact('adoptWorktree'), 'the second open-worktree dialog to close')
-    await waitForText(page, 'hand-cut', 'the re-adopted row')
+    await chooseAction(page, 'hand-cut', 'openWorktree')
+    await waitFor(page, `document.body.innerText.includes('hand-cut · demo-repo')`, 'the re-opened workspace')
 
     await chooseAction(page, 'hand-cut', 'removeWorktree')
     await waitForForm(page, anyOf('removeWorktreeTitle'), 'the remove confirmation')

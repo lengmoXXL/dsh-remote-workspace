@@ -13,13 +13,12 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import {
   Button,
-  IconBranchOutline16,
   IconFolderOpen16,
   IconWarningOutline16,
   Input,
   Modal,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { DirListing, ExistingWorktree, NodeId, RepoId, RepoRecord, T } from './Section.tsx'
+import type { DirListing, NodeId, RepoId, RepoRecord, T } from './Section.tsx'
 import css from './Section.module.css'
 
 /** The message a failure carries, or a readable fallback. */
@@ -436,79 +435,3 @@ export function NewWorktreeDialog({ repo, root, busy, onClose, onSubmit, t }: {
   )
 }
 
-/**
- * Open one checkout the machine's git already has.
- *
- * The list is git's own, so a checkout cut by hand — or before this plugin
- * existed — is as usable as one the plugin cut. Clicking a row adopts it and
- * opens it as a workspace; nothing on the machine is written to. A row the
- * panel already holds is listed too, disabled, so the dialog answers "is
- * anything missing here?" as well as "what can I open?".
- */
-export function OpenWorktreeDialog({ repo, busy, onClose, onSubmit, listExisting, t }: {
-  repo: RepoRecord
-  busy: boolean
-  onClose: () => void
-  onSubmit: (path: string) => Promise<void>
-  listExisting: (repoId: RepoId) => Promise<readonly ExistingWorktree[]>
-  t: T
-}) {
-  const [entries, setEntries] = useState<readonly ExistingWorktree[] | undefined>(undefined)
-  const [error, setError] = useState<string | undefined>(undefined)
-
-  useEffect(() => {
-    let live = true
-    listExisting(repo.repoId).then(
-      next => { if (live) setEntries(next) },
-      (failure: unknown) => { if (live) setError(reasonOf(failure)) },
-    )
-    return () => { live = false }
-  }, [listExisting, repo.repoId])
-
-  const open = async (path: string): Promise<void> => {
-    setError(undefined)
-    try {
-      await onSubmit(path)
-      onClose()
-    } catch (failure) {
-      setError(reasonOf(failure))
-    }
-  }
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title={t('adoptWorktree')}
-      description={repo.repoPath}
-      closeLabel={t('close')}
-      footer={<Button onClick={onClose}>{t('cancel')}</Button>}
-    >
-      <div className={css.fields}>
-        <DialogError message={error} />
-        <div className={css.pickerList}>
-          {error !== undefined ? null : entries === undefined ? (
-            <div className={css.pickerEmpty}>{t('loading')}</div>
-          ) : entries.length === 0 ? (
-            <div className={css.pickerEmpty}>{t('adoptEmpty')}</div>
-          ) : (
-            entries.map(entry => (
-              <button
-                key={entry.path}
-                type="button"
-                className={css.pickerItem}
-                disabled={busy || entry.registered}
-                title={entry.path}
-                onClick={() => void open(entry.path)}
-              >
-                <IconBranchOutline16 />
-                <span>{entry.name}</span>
-                <span className={css.dim}>{entry.registered ? t('adoptRegistered') : entry.branch}</span>
-              </button>
-            ))
-          )}
-        </div>
-      </div>
-    </Modal>
-  )
-}

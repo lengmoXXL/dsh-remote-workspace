@@ -27,7 +27,7 @@ import {
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteWorktreesKey } from './locales.ts'
 import { NS } from './locales.ts'
-import { AddMachineDialog, AddRepoDialog, NewWorktreeDialog, OpenWorktreeDialog, reasonOf } from './dialogs.tsx'
+import { AddMachineDialog, AddRepoDialog, NewWorktreeDialog, reasonOf } from './dialogs.tsx'
 import css from './Section.module.css'
 
 /** The locale seat this section reads, including its template parameters. */
@@ -138,16 +138,6 @@ interface WorktreeStatus {
   readonly error?: string
 }
 
-/** One checkout the repository's machine already has. */
-export interface ExistingWorktree {
-  readonly path: string
-  readonly name: string
-  /** Branch the checkout sits on; empty when it is detached. */
-  readonly branch: string
-  /** Whether the plugin already holds it in the panel. */
-  readonly registered: boolean
-}
-
 /** One entry of a remote directory listing. */
 interface DirEntry {
   readonly name: string
@@ -197,10 +187,6 @@ export interface RemoteWorktreesFace {
   listDirs(nodeId: NodeId, path: string): Promise<DirListing>
   /** Cut a worktree from a registered repository; `path` overrides the default. */
   createWorktree(draft: { repoId: RepoId; name: string; path?: string }): Promise<void>
-  /** Every checkout the repository's machine already has, besides its own. */
-  existingWorktrees(repoId: RepoId): Promise<readonly ExistingWorktree[]>
-  /** Take an existing checkout under management and open it; git is untouched. */
-  adoptWorktree(repoId: RepoId, path: string): Promise<void>
   /** Remove a worktree; `deleteBranch` also drops the branch it was cut on. */
   removeWorktree(anchorId: AnchorId, deleteBranch: boolean): Promise<void>
   /** Stop managing a checkout, leaving it on the machine untouched. */
@@ -233,7 +219,6 @@ type Dialog =
   | { readonly kind: 'machine' }
   | { readonly kind: 'repo'; readonly nodeId: NodeId }
   | { readonly kind: 'worktree'; readonly repo: RepoRecord }
-  | { readonly kind: 'existing'; readonly repo: RepoRecord }
   | undefined
 
 /** The state dot and label one connection state renders as. */
@@ -653,14 +638,6 @@ export function RemoteWorktreesSection(props: SectionProps) {
                                         run: () => setDialog({ kind: 'worktree', repo }),
                                       },
                                       {
-                                        id: 'adoptWorktree',
-                                        label: entry.git
-                                          ? t('adoptWorktree')
-                                          : <>{t('adoptWorktree')} <span className={css.dim}>{why}</span></>,
-                                        disabled: !entry.git,
-                                        run: () => setDialog({ kind: 'existing', repo }),
-                                      },
-                                      {
                                         id: 'directory',
                                         // Nothing is open when the machine
                                         // cannot be asked, so the label is the
@@ -769,17 +746,6 @@ export function RemoteWorktreesSection(props: SectionProps) {
           busy={busy}
           onClose={() => setDialog(undefined)}
           onSubmit={draft => submit(() => props.createWorktree(draft))}
-          t={t}
-        />
-      ) : null}
-
-      {dialog?.kind === 'existing' ? (
-        <OpenWorktreeDialog
-          repo={dialog.repo}
-          busy={busy}
-          onClose={() => setDialog(undefined)}
-          onSubmit={path => submit(() => props.adoptWorktree(dialog.repo.repoId, path))}
-          listExisting={props.existingWorktrees}
           t={t}
         />
       ) : null}
