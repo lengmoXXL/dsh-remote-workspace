@@ -278,11 +278,11 @@ export const SP_PIPE_NOTIFICATION = 'sp.pipe'
 /**
  * Compile-time brand for the ids this contract carries.
  *
- * Declared here rather than imported from `@deepseek-ai/dsh-brand` because this
- * module takes no imports at all: the daemon is a plain Node program that must
- * not depend on a Harness package, so both sides inline these declarations.
- * The mechanism is the same one that package uses — a `unique symbol` keyed
- * intersection that only the owning domain can mint.
+ * Declared here rather than imported from `@deepseek-ai/dsh-brand` to keep the
+ * wire contract self-contained: the daemon is a Rust program whose hand-written
+ * copy of these shapes (`agent/src/protocol.rs`) shares no module with this
+ * package. The mechanism is the same one that package uses — a `unique symbol`
+ * keyed intersection that only the owning domain can mint.
  */
 declare const WIRE_BRAND: unique symbol
 
