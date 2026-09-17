@@ -1,8 +1,9 @@
 /**
- * The startup pass is the only thing that connects a machine without a person
- * asking, so its cases are about how far it goes and when it stops: it retries
- * a failure a bounded number of times, one unreachable machine does not delay
- * or stop the others, and disposal cancels what has not started.
+ * The passes are the only thing that connects a machine without a person
+ * asking, so its cases are about how far they go and when they stop: a failure
+ * is retried a bounded number of times, a later pass revisits only what is
+ * still failed, one unreachable machine does not delay or stop the others, and
+ * stopping cancels what has not started.
  */
 
 import assert from 'node:assert/strict'
@@ -50,6 +51,15 @@ function connectionsOf(script: Readonly<Record<string, number>>) {
 function gaps(): { waits: number[]; delay: (ms: number) => Promise<void> } {
   const waits: number[] = []
   return { waits, delay: (ms: number) => { waits.push(ms); return Promise.resolve() } }
+}
+
+/** Wait for a condition rather than for a fixed gap. */
+async function until(condition: () => boolean, timeoutMs = 500): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error('the condition never held')
+    await new Promise(resolve => setTimeout(resolve, 2))
+  }
 }
 
 test('a machine that connects on the first attempt is attempted once', async () => {
@@ -122,4 +132,58 @@ test('a deployment with no machines starts no attempts', async () => {
   await new Promise(resolve => setImmediate(resolve))
 
   assert.deepEqual(attempts, [])
+})
+
+test('a later pass revisits a machine the first pass left failed', async () => {
+  let attempts = 0
+  const state = { n1: 'failed' }
+  const connections = {
+    connect: () => {
+      attempts += 1
+      if (attempts <= 3) return Promise.reject(new Error('"n1" is unreachable'))
+      state.n1 = 'ready'
+      return Promise.resolve({} as never)
+    },
+  } as unknown as Pick<NodeConnections, 'connect'>
+  const { delay } = gaps()
+
+  const stop = autoconnect({
+    records: () => [record('n1')],
+    connections,
+    status: () => ({ nodeId: asNodeId('n1'), state: state.n1 }),
+    attempts: 3,
+    gapMs: 0,
+    refreshMs: 5,
+    delay,
+  })
+  await until(() => attempts === 4)
+  await new Promise(resolve => setTimeout(resolve, 20))
+  stop()
+
+  assert.equal(attempts, 4, 'the machine is retried until it answers, then left alone')
+})
+
+test('a later pass does not undo a machine a person disconnected', async () => {
+  let attempts = 0
+  const state = { n1: 'failed' }
+  const connections = {
+    connect: () => { attempts += 1; return Promise.reject(new Error('"n1" is unreachable')) },
+  } as unknown as Pick<NodeConnections, 'connect'>
+  const { delay } = gaps()
+
+  const stop = autoconnect({
+    records: () => [record('n1')],
+    connections,
+    status: () => ({ nodeId: asNodeId('n1'), state: state.n1 }),
+    attempts: 1,
+    gapMs: 0,
+    refreshMs: 20,
+    delay,
+  })
+  await until(() => attempts === 1)
+  state.n1 = 'disconnected'
+  await new Promise(resolve => setTimeout(resolve, 60))
+  stop()
+
+  assert.equal(attempts, 1, 'a deliberate disconnect stays down')
 })

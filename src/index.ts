@@ -219,7 +219,12 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   // machine, and a restored session should find its workspace reachable. The
   // pass gives up quietly, so its failures are read from the section.
   ctx.effect(() => {
-    const stop = autoconnect({ records: () => registry.list(), connections })
+    const stop = autoconnect({
+      records: () => registry.list(),
+      connections,
+      status: nodeId => connections.status(nodeId),
+      refreshMs: 30_000,
+    })
     return () => {
       stop()
       connections.dispose()
