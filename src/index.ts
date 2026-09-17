@@ -379,7 +379,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       // directory no anchor claims runs locally.
       const route = classifyPath(cwd, undefined, anchorStore.routes())
       const nodeId = route.kind === 'remote' ? route.nodeId : LOCAL_NODE_ID
-      return { nodeId, label: registry.get(nodeId as NodeId)?.title ?? nodeId }
+      return { label: registry.get(nodeId as NodeId)?.title ?? nodeId }
     },
   })
   // The management API reads the terminal table too: the panel lists the

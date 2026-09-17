@@ -104,7 +104,6 @@ export interface TerminalEntry {
   readonly id: string
   readonly label: string
   readonly sessionId: string
-  readonly nodeId: string
   readonly machine: string
   readonly cwd: string
   readonly handle: TtyHandle
@@ -115,8 +114,6 @@ export interface TerminalEntry {
   /** Bytes dropped from the front of the stream to keep `buffer` bounded. */
   dropped: number
   state: 'running' | 'detached' | 'exited'
-  /** How the process ended, once it has; absent while it runs. */
-  outcome?: TtyOutcome
   cols: number
   rows: number
   /** Consumers currently receiving output; the tab's socket is the usual one. */
@@ -287,7 +284,7 @@ export interface TerminalRegistryOptions {
    * @param cwd - the workspace directory.
    * @returns the node id and the title to show a reader.
    */
-  readonly machine: (cwd: string) => { readonly nodeId: string; readonly label: string }
+  readonly machine: (cwd: string) => { readonly label: string }
 }
 
 /** A terminal request the registry refused. */
@@ -379,7 +376,6 @@ export function createTerminalRegistry(options: TerminalRegistryOptions): Termin
 
   /** Keep only the last `lines` lines of one string. */
   const tailLines = (text: string, lines: number): { text: string; cut: boolean } => {
-    if (lines <= 0) return { text: '', cut: text !== '' }
     const parts = text.split('\n')
     if (parts.length <= lines) return { text, cut: false }
     return { text: parts.slice(parts.length - lines).join('\n'), cut: true }
@@ -421,7 +417,6 @@ export function createTerminalRegistry(options: TerminalRegistryOptions): Termin
     })
     entry.handle.done.then(
       (outcome) => {
-        entry.outcome = outcome
         settle(entry, sink => { sink.exit(outcome) })
       },
       (error: unknown) => {
@@ -467,7 +462,6 @@ export function createTerminalRegistry(options: TerminalRegistryOptions): Termin
         id: `t${String(ordinal)}`,
         label: `Terminal ${String(ordinal)}`,
         sessionId,
-        nodeId: where.nodeId,
         machine: where.label,
         cwd,
         handle,
@@ -657,10 +651,6 @@ export function createTerminalRegistry(options: TerminalRegistryOptions): Termin
             return
           }
           if (entry.state === 'exited') finish(false, 'exit')
-        }
-        if (signal?.aborted === true) {
-          abort()
-          return
         }
         signal?.addEventListener('abort', abort, { once: true })
         entry.waiters.add(check)
