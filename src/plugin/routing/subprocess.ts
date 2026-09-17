@@ -18,9 +18,6 @@
  * design cannot fetch without an async reader is fetched once, completely,
  * before `done` settles.
  *
- * `'pipe'` output is refused for a remote cwd rather than silently collected:
- * a consumer that asked for a live stream must learn it cannot have one.
- *
  * @module dsh-remote-workspace/plugin/routing/subprocess
  */
 
@@ -194,7 +191,6 @@ function settled(request: Promise<unknown>): Promise<void> {
  * @param remoteCwd - the canonical remote working directory.
  * @param spec - the caller's fully specified spawn request.
  * @returns the handle, valid before the daemon has answered.
- * @throws when the caller asked for a disposition this design cannot carry.
  */
 function createRemoteHandle(
   channel: NodeChannel,
@@ -390,7 +386,7 @@ function rewriteExecutable(argv: readonly string[], remoteRipgrep: string): read
   const head = argv[0]
   if (head === undefined || !head.startsWith('/')) return argv
   const base = head.slice(head.lastIndexOf('/') + 1)
-  if (base !== 'rg' && base !== 'rg.exe') return argv
+  if (base !== 'rg') return argv
   return [remoteRipgrep, ...argv.slice(1)]
 }
 

@@ -259,11 +259,8 @@ export function createRoutingFileSystem(deps: RoutingFileSystemDeps): FileSystem
     contains(parent, child) {
       const left = parseKey(parent.targetKey)
       const right = parseKey(child.targetKey)
-      if (left.kind === 'local' || right.kind === 'local') {
-        return left.kind === 'local' && right.kind === 'local'
-          ? deps.localFs.contains(parent, child)
-          : false
-      }
+      if (left.kind === 'local' && right.kind === 'local') return deps.localFs.contains(parent, child)
+      if (left.kind === 'local' || right.kind === 'local') return false
       return left.nodeId === right.nodeId && isWithin(left.remotePath, right.remotePath)
     },
 
