@@ -26,6 +26,7 @@ import type { ConnectedNode } from '../../src/remote/client.ts'
 import { NodeRequestError } from '../../src/remote/client.ts'
 import type { SpPipeFrame, WireMethod, WireParams, WireResult } from '../../src/remote/protocol.ts'
 import type { ProcId } from '../../src/remote/protocol.ts'
+import { ptyUnavailable } from '../tty.ts'
 
 const run = promisify(execFile)
 const TOKEN = 'protocol-token-0123456789'
@@ -34,6 +35,9 @@ let root: string
 let repo: string
 let server: TestAgent
 let node: ConnectedNode
+
+/** Skip the terminal cases on a host whose sandbox refuses a PTY. */
+const noPty = await ptyUnavailable()
 
 /** Run git in the fixture repository with a fixed identity. */
 async function git(args: string[], cwd = repo): Promise<string> {
@@ -312,7 +316,7 @@ test('a daemon failure carries the protocol error data', async () => {
   )
 })
 
-test('term.spawn, term.write, and term.read move text through a pty', async () => {
+test('term.spawn, term.write, and term.read move text through a pty', { skip: noPty }, async () => {
   const spawned = await call('term.spawn', {
     argv: ['/bin/sh'],
     cwd: root,
@@ -339,7 +343,7 @@ test('term.spawn, term.write, and term.read move text through a pty', async () =
   assert.deepEqual(fields(outcome), ['exitCode', 'signal'])
 })
 
-test('term.inspectForeground and term.signalForeground address the foreground group', async () => {
+test('term.inspectForeground and term.signalForeground address the foreground group', { skip: noPty }, async () => {
   const spawned = await call('term.spawn', {
     argv: ['/bin/sh'],
     cwd: root,

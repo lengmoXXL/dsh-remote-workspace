@@ -13,6 +13,10 @@ import { test } from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
 import { LocalTtyRuntime } from '../../src/local/tty.ts'
 import type { TtyHandle } from '../../src/tty.ts'
+import { ptyUnavailable } from '../tty.ts'
+
+/** Skip every case on a host whose sandbox refuses a PTY. */
+const noPty = await ptyUnavailable()
 
 /** The provider every case asks for a terminal. */
 function provider(): LocalTtyRuntime {
@@ -41,7 +45,7 @@ function watcher(handle: TtyHandle): {
   }
 }
 
-test('a program runs on a pty and its output comes back', async () => {
+test('a program runs on a pty and its output comes back', { skip: noPty }, async () => {
   const handle = await provider().spawn({
     argv: ['/bin/echo', 'hello from the pty'],
     cwd: '/tmp',
@@ -53,7 +57,7 @@ test('a program runs on a pty and its output comes back', async () => {
   assert.deepEqual(await handle.done, { exitCode: 0, signal: null })
 })
 
-test('a resize reaches the pty while its shell is running', async () => {
+test('a resize reaches the pty while its shell is running', { skip: noPty }, async () => {
   // An interactive shell ignores SIGTERM, so releasing it here runs the whole
   // ladder; the short grace keeps that from being the slowest case in the file.
   const handle = await provider().spawn({ argv: ['/bin/sh'], cwd: '/tmp', cols: 80, rows: 24, graceMs: 300 })
@@ -69,7 +73,7 @@ test('a resize reaches the pty while its shell is running', async () => {
   }
 })
 
-test('the caller environment is layered onto this process', async () => {
+test('the caller environment is layered onto this process', { skip: noPty }, async () => {
   const handle = await provider().spawn({
     argv: ['/bin/sh', '-c', 'echo "value=$DRW_TTY_TEST inherited=${PATH:+set}"'],
     cwd: '/tmp',
@@ -81,7 +85,7 @@ test('the caller environment is layered onto this process', async () => {
   await handle.done
 })
 
-test('terminate ends a long-running program, and a later call is a no-op', async () => {
+test('terminate ends a long-running program, and a later call is a no-op', { skip: noPty }, async () => {
   const handle = await provider().spawn({
     argv: ['/bin/sleep', '30'],
     cwd: '/tmp',
@@ -96,7 +100,7 @@ test('terminate ends a long-running program, and a later call is a no-op', async
   assert.deepEqual(await handle.done, outcome, 'a later release leaves the settled outcome alone')
 })
 
-test('a program that cannot start is reported through the outcome', async () => {
+test('a program that cannot start is reported through the outcome', { skip: noPty }, async () => {
   // node-pty reports a failed exec as an exiting child rather than a spawn
   // failure, so the seam's outcome is where the caller learns of it.
   const handle = await provider().spawn({
