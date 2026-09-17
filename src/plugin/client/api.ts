@@ -9,7 +9,7 @@
  */
 
 /** The host route prefix the management API is registered under. */
-export const API = '/dsh-remote-workspace'
+const API = '/dsh-remote-workspace'
 
 /**
  * One JSON request against the management API.

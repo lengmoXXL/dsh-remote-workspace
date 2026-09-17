@@ -223,7 +223,6 @@ async function resolveOnNode(
   const channel = deps.connections.channel(record.nodeId)
   if (channel === undefined) throw new ApiError(409, `node "${record.nodeId}" is not connected`)
   const resolved = await channel.request('fs.resolve', { path })
-  if (resolved.canonicalPath === undefined) throw new ApiError(502, 'the daemon returned no path')
   return resolved.canonicalPath
 }
 
@@ -663,7 +662,6 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
   return JSON.parse(Buffer.concat(chunks).toString('utf8'))
 }
 
-/** Write one normalized response. */
 function writeResponse(response: ServerResponse, result: ApiResponse): void {
   const payload = JSON.stringify(result.body)
   response.writeHead(result.status, {
