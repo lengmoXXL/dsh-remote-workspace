@@ -163,6 +163,27 @@ test('a later pass revisits a machine the first pass left failed', async () => {
   assert.equal(attempts, 4, 'the machine is retried until it answers, then left alone')
 })
 
+test('a later pass with no status reader treats every machine as retryable', async () => {
+  let attempts = 0
+  const connections = {
+    connect: () => { attempts += 1; return Promise.reject(new Error('"n1" is unreachable')) },
+  } as unknown as Pick<NodeConnections, 'connect'>
+  const { delay } = gaps()
+
+  const stop = autoconnect({
+    records: () => [record('n1')],
+    connections,
+    attempts: 1,
+    gapMs: 0,
+    refreshMs: 10,
+    delay,
+  })
+  await until(() => attempts >= 2)
+  stop()
+
+  assert.ok(attempts >= 2, 'a missing status reader does not silence the follow-up pass')
+})
+
 test('a later pass does not undo a machine a person disconnected', async () => {
   let attempts = 0
   const state = { n1: 'failed' }

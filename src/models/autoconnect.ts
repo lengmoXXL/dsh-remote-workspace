@@ -89,7 +89,7 @@ export function autoconnect(deps: AutoconnectDeps): () => void {
     if (record.transport.kind === 'local') return
     // A follow-up pass exists for a transient link failure, not for a machine a
     // person disconnected; `failed` is the only state it revisits.
-    if (retryOnlyFailed && deps.status?.(record.nodeId).state !== 'failed') return
+    if (retryOnlyFailed && deps.status !== undefined && deps.status(record.nodeId).state !== 'failed') return
     void pass(record)
   }
 
