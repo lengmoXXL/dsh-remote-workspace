@@ -91,16 +91,12 @@ async fn serve_connection(stream: TcpStream, shared: Arc<SharedBackends>) {
         let params = message.get("params").cloned().unwrap_or(Value::Null);
 
         if !greeted {
-            let refusal = match handshake(&method, &params, &shared) {
+            let outcome = match handshake(&method, &params, &shared) {
                 Ok(()) => {
                     greeted = true;
-                    None
+                    Ok(node_info(&shared))
                 }
-                Err(failure) => Some(failure),
-            };
-            let outcome = match refusal {
-                None => Ok(node_info(&shared)),
-                Some(failure) => Err(failure),
+                Err(failure) => Err(failure),
             };
             if !outbound.respond(&id, outcome).await {
                 break;
