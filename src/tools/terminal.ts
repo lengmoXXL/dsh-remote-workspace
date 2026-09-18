@@ -1,12 +1,9 @@
 /**
  * The one model-facing terminal tool.
  *
- * The tool drives the same shells the sidebar's terminal tabs hold: a terminal
- * exists because a person opened a tab, and this tool only ever addresses one
- * that is already open. It never creates a terminal — opening one is a person's
- * action — and it never ends one, because ending somebody's shell is not the
- * model's to do. Interrupting a foreground command is a keystroke (`ctrl+c`),
- * which is how a person does it too.
+ * The tool drives the same shells the sidebar's terminal tabs hold.
+ * Interrupting a foreground command is a keystroke (`ctrl+c`), which is how a
+ * person does it too.
  *
  * One tool carries every operation, dispatched by `action`. A part of the
  * contract is which parameters belong to which action: sending `text` with
@@ -62,7 +59,6 @@ interface TerminalWriteValue {
   readonly wrote: { readonly bytes: number; readonly keys: number }
 }
 
-/** Every value this tool returns. */
 type TerminalValue = TerminalListValue | TerminalRead | TerminalWriteValue | TerminalWait
 
 /** The canonical schemas, one branch per distinct return shape. */

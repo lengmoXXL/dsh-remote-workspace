@@ -198,6 +198,11 @@ const DEFAULT_WORKTREE_ROOT = '~/.dsh/worktrees'
  * @param config - the validated plugin config.
  */
 export async function apply(ctx: Context, config: Config): Promise<void> {
+  const configuredRoot = config.worktreeRoot ?? DEFAULT_WORKTREE_ROOT
+  if (configuredRoot !== '~' && !configuredRoot.startsWith('~/') && !configuredRoot.startsWith('/')) {
+    throw new Error(`worktreeRoot must be absolute, "~", or "~/…": "${configuredRoot}"`)
+  }
+
   const dataDir = config.dataDir ?? dshHomePath('remote-worktrees')
 
   const registry = createNodeRegistry({ file: join(dataDir, 'nodes.json') })
@@ -235,10 +240,6 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   // a connection, so which nodes those are is settled once.
   const isLocalNode = (nodeId: NodeId): boolean => registry.get(nodeId)?.transport.kind === 'local'
 
-  const configuredRoot = config.worktreeRoot ?? DEFAULT_WORKTREE_ROOT
-  if (configuredRoot !== '~' && !configuredRoot.startsWith('~/') && !configuredRoot.startsWith('/')) {
-    throw new Error(`worktreeRoot must be absolute, "~", or "~/…": "${configuredRoot}"`)
-  }
   /** Where managed checkouts live on one machine. */
   const worktreeRoot = (nodeId: NodeId): string => {
     if (!configuredRoot.startsWith('~')) return configuredRoot
@@ -273,8 +274,9 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       },
       async unregister(anchor) {
         const service = workspaceRegistry(ctx)
-        const record = await service?.resolveByPath(anchor.anchorPath)
-        if (record !== undefined && service !== undefined) await service.delete(record.id)
+        if (service === undefined) return
+        const record = await service.resolveByPath(anchor.anchorPath)
+        if (record !== undefined) await service.delete(record.id)
       },
       async registered(anchor) {
         const record = await workspaceRegistry(ctx)?.resolveByPath(anchor.anchorPath)
