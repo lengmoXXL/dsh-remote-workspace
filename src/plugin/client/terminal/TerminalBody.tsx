@@ -8,11 +8,6 @@
  * — plus the two things only a live body can do: measure, and offer a restart
  * once the shell is gone, or an explicit end through the socket it holds.
  *
- * A tab with no chosen shell yet draws the chooser instead: the entry opened
- * this page, and a shell exists only once somebody says which one. The choice
- * lives in {@link chooseTerminal}'s store rather than in this component, so
- * hiding the tab and coming back does not ask again.
- *
  * @module dsh-remote-workspace/plugin/client/terminal/TerminalBody
  */
 

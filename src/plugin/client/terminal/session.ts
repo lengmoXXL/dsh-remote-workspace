@@ -143,7 +143,7 @@ const MEMORY_KEY = 'dsh-remote-workspace.terminal'
  * @param sessionId - the Session whose terminal is wanted.
  * @returns the remembered registry id, if any.
  */
-function remembered(sessionId: string): string | undefined {
+export function lastTerminal(sessionId: string): string | undefined {
   try {
     const known = JSON.parse(localStorage.getItem(MEMORY_KEY) ?? '{}') as Record<string, string>
     return known[sessionId]
@@ -165,21 +165,9 @@ function memorize(sessionId: string, id: string | null): void {
   }
 }
 
-/**
- * The shell this page last used in one Session.
- *
- * The chooser reads it to put the likely target first; nothing attaches to it
- * on its own, because which shell a tab shows is the person's choice.
- * @param sessionId - the Session whose record is wanted.
- * @returns the remembered registry id, if any.
- */
-export function lastTerminal(sessionId: string): string | undefined {
-  return remembered(sessionId)
-}
-
 /** Forget one Session's terminal, unless a newer one has replaced it. */
 function forget(sessionId: string, id: string | undefined): void {
-  if (id !== undefined && remembered(sessionId) === id) memorize(sessionId, null)
+  if (id !== undefined && lastTerminal(sessionId) === id) memorize(sessionId, null)
 }
 
 /**
@@ -327,7 +315,6 @@ function send(entry: Entry, frame: ClientFrame): void {
   if (entry.socket.readyState === WebSocket.OPEN) entry.socket.send(JSON.stringify(frame))
 }
 
-/** The socket URL for this page's origin. */
 function socketUrl(): string {
   const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:'
   return `${scheme}//${location.host}${SOCKET_PATH}`

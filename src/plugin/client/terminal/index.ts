@@ -8,10 +8,7 @@
  * per Session, not per file — so the type carries no patterns and opens by
  * kind.
  *
- * The guide capsule cannot express one row per live terminal: a guide entry
- * carries static copy and opens its type by kind, with no payload a body could
- * read, and the entries are registered once rather than per shell. The body
- * therefore asks through its own chooser, which reads the host's terminal table
+ * The body asks through its own chooser, which reads the host's terminal table
  * over this plugin's management route: the same table the agent's terminal tool
  * addresses, so a shell a reload or a closed tab detached is still offered — and
  * can be closed — instead of living on invisibly.
