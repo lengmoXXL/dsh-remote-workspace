@@ -39,6 +39,7 @@ import { en, zh } from '../../src/plugin/client/locales.ts'
 import {
   clickByText,
   clickInDialog,
+  dialogHasMatch,
   fillDialogInput,
   fillDialogInputByPlaceholder,
   waitFor,
@@ -50,6 +51,7 @@ import {
 import { launchFirefox, type FirefoxPage } from './firefox.ts'
 import { startInstance, type E2eInstance } from './instance.ts'
 import { SOCKET_PATH } from '../../src/terminal/shared/wire.ts'
+import { ptyUnavailable } from '../tty.ts'
 
 const run = promisify(execFile)
 
@@ -201,21 +203,14 @@ function pathFieldIs(path: string): string {
 async function clearShellDialogs(page: FirefoxPage): Promise<void> {
   // The settings panel is itself a dialog, so what marks an overlay is the skip
   // control inside it, not the dialog role.
-  const pending = `
-    (() => {
-      const skip = ${JSON.stringify(SKIP_SHELL_DIALOG.source)}
-      const pattern = new RegExp(skip, 'i')
-      const label = el => (el.getAttribute('aria-label') ?? el.textContent ?? '').trim()
-      return [...document.querySelectorAll('[role="dialog"]')].some(dialog =>
-        [...dialog.querySelectorAll('button')].some(button => pattern.test(label(button))))
-    })()
-  `
   for (let attempt = 0; attempt < 15; attempt++) {
-    if (!await page.evaluate<boolean>(pending)) return
+    if (!await dialogHasMatch(page, SKIP_SHELL_DIALOG)) return
     await clickByText(page, SKIP_SHELL_DIALOG)
     await delay(300)
   }
-  await waitFor(page, `!${pending}`, 'the shell dialogs to close')
+  if (await dialogHasMatch(page, SKIP_SHELL_DIALOG)) {
+    throw new Error('the shell dialogs did not close')
+  }
 }
 
 /** Wait for a bounded interval. */
@@ -621,7 +616,7 @@ async function attachAndRead(page: FirefoxPage, id: string): Promise<{
   `)
 }
 
-test('a remote worktree is created and removed through the browser', { timeout: 300_000 }, async () => {
+test('a remote worktree is created and removed through the browser', { timeout: 300_000 }, async (t) => {
   // Nothing is created until the guard is in place: a deployment that is built
   // outside `try` would survive a thrown test and keep two processes alive.
   let deployment: E2eInstance | undefined
@@ -981,6 +976,15 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     // The workspace a session would open is labelled for this machine too.
     await waitFor(page, `document.body.innerText.includes('here · local-repo · Local')`, 'the local workspace label')
     await shot('10-local-worktree')
+
+    // The terminal section drives a real PTY on the deployment host. A sandbox
+    // that refuses posix_openpt would fail it on the environment rather than the
+    // code, so it reports as skipped and the run still covers everything above.
+    const noPty = await ptyUnavailable()
+    if (noPty !== undefined) {
+      t.diagnostic(`terminal section skipped: ${noPty}`)
+      return
+    }
 
     // A terminal tab belongs to a Session's right Sidebar, and only worktree
     // management has run so far: the workspace just cut is opened as a Session

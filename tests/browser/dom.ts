@@ -96,6 +96,26 @@ export async function clickInDialog(page: FirefoxPage, pattern: RegExp, nth = 0)
 }
 
 /**
+ * Whether any open dialog offers a clickable control matching the pattern.
+ *
+ * The predicate is the one {@link clickInDialog} clicks by, so a caller can
+ * wait on it without racing a control that is present but hidden or disabled.
+ * @param page - the page to act on.
+ * @param pattern - matched against the control's text, aria-label, and title.
+ */
+export async function dialogHasMatch(page: FirefoxPage, pattern: RegExp): Promise<boolean> {
+  return await page.evaluate<boolean>(`
+    (() => {
+      ${HELPERS}
+      const pattern = patternOf(${JSON.stringify({ source: pattern.source, flags: pattern.flags })})
+      return [...document.querySelectorAll('[role="dialog"]')].some(dialog =>
+        [...dialog.querySelectorAll(${JSON.stringify(CLICKABLE)})]
+          .some(el => pattern.test(labelOf(el)) && shown(el) && el.disabled !== true))
+    })()
+  `)
+}
+
+/**
  * Fill one input inside the open dialog, by position among its inputs.
  * @param page - the page to act on.
  * @param index - zero-based position among the dialog's visible inputs.
