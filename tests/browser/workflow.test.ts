@@ -518,14 +518,14 @@ async function openTerminal(page: FirefoxPage, choose: { readonly id: string } |
 }
 
 /**
- * Press the panel's New terminal control, which adds a shell-less tab beside
- * the one in view and leaves it on its own chooser.
+ * Press the panel's Manage terminals control, which adds a shell-less tab
+ * beside the one in view and leaves it on its own chooser.
  * @param page - the page to act on.
  */
 async function openAnotherTerminal(page: FirefoxPage): Promise<void> {
   await clearShellDialogs(page)
-  await waitFor(page, `document.querySelector('[data-terminal-newtab]') !== null`, 'the New terminal control')
-  await page.evaluate(`document.querySelector('[data-terminal-newtab]').click()`)
+  await waitFor(page, `document.querySelector('[data-terminal-manage]') !== null`, 'the Manage terminals control')
+  await page.evaluate(`document.querySelector('[data-terminal-manage]').click()`)
   await waitFor(page, `document.querySelector('[data-terminal-picker]') !== null`, 'the new tab chooser')
 }
 
@@ -1168,7 +1168,7 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     const left = await attachAndRead(page, terminalId)
     assert.equal(left.ready?.id, terminalId, 'the detached terminal outlived the New terminal choice')
 
-    // The panel's own New terminal control is what adds a second tab: the
+    // The panel's own Manage terminals control is what adds a second tab: the
     // strip's add control cannot, because a page kind is focused where it is
     // already open rather than opened twice in one pane. The new tab starts
     // shell-less, so its chooser still offers the shell behind the first tab.
@@ -1183,12 +1183,12 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     assert.deepEqual(
       await page.evaluate<readonly string[]>(CHIP_TITLES),
       [fresh],
-      'one terminal tab before the New terminal control',
+      'one terminal tab before the Manage terminals control',
     )
 
     await openAnotherTerminal(page)
     const chips = await page.evaluate<readonly string[]>(CHIP_TITLES)
-    assert.equal(chips.length, 2, 'the New terminal control added a second tab')
+    assert.equal(chips.length, 2, 'the Manage terminals control added a second tab')
     assert.ok(chips.includes(fresh), 'the first terminal tab is still there')
     await clearShellDialogs(page)
     await waitFor(

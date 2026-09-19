@@ -15,7 +15,7 @@ import { useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode
 import {
   Button,
   IconCloseOutline16,
-  IconPlusOutline16,
+  IconEllipsisOutline16,
   IconRefreshOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime, Translate } from '@deepseek-ai/dsh-client-ui-slots'
@@ -142,10 +142,10 @@ export function TerminalBody(
           className={css.action}
           size="sm"
           variant="ghost"
-          icon={<IconPlusOutline16 />}
-          data-terminal-newtab
-          aria-label={t('action.newTab')}
-          title={t('action.newTab')}
+          icon={<IconEllipsisOutline16 />}
+          data-terminal-manage
+          aria-label={t('action.manage')}
+          title={t('action.manage')}
           onClick={openAnother}
         />
       </div>

@@ -40,7 +40,7 @@ export const zh = {
 
   'action.end': '结束终端',
   'action.restart': '重新打开',
-  'action.newTab': '新建终端',
+  'action.manage': '管理终端',
 
   'settings.title': '终端外观',
   'settings.description': '终端怎么画：字体、字号、行高、光标和回滚行数。',
@@ -88,7 +88,7 @@ export const en = {
 
   'action.end': 'End terminal',
   'action.restart': 'Restart',
-  'action.newTab': 'New terminal',
+  'action.manage': 'Manage terminals',
 
   'settings.title': 'Terminal appearance',
   'settings.description': 'How a terminal is drawn: its font, size, line height, cursor, and scrollback.',

@@ -62,7 +62,7 @@ shared secret. `Local` needs neither. Machines connect on their own, and one tha
 button. Register a repository, then use a row's menu to open, close, or remove what it holds.
 
 **Terminal.** The right Sidebar's add control has a **Terminal** button: it lists the Session's live terminals and
-offers a new one. **New terminal** in the panel's status bar opens a second terminal tab beside the one in view, where
+offers a new one. **Manage terminals** in the panel's status bar opens a second terminal tab beside the one in view, where
 the chooser offers a fresh shell or one that is already running; a shell another tab already shows is marked **Open in
 another tab**, and picking it brings that tab forward. Closing a tab leaves that shell running — it shows up in the
 chooser as detached — and **End terminal** in the panel, or a row's close control in the chooser, is what ends it.
