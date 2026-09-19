@@ -164,7 +164,7 @@ test('a configured SSH port and identity file reach the command line', () => {
   assert.equal(args[args.indexOf('-L') + 1], '127.0.0.1:1000:127.0.0.1:9')
 })
 
-test('an omitted SSH port or identity file is left to the operator s configuration', () => {
+test('an omitted SSH port or identity file is left to the operator’s configuration', () => {
   const args = tunnelArgs({ ssh: SSH, remotePort: 7801 }, 1)
   assert.equal(args.includes('-p'), false)
   assert.equal(args.includes('-i'), false)

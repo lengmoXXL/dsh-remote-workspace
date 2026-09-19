@@ -265,7 +265,7 @@ test('either deadline through a forward blames the absent daemon', async () => {
   }
 })
 
-test('a handshake failure on a direct address keeps the connector s own words', async () => {
+test('a handshake failure on a direct address keeps the connector’s own words', async () => {
   const connections = createNodeConnections({
     connect: () => Promise.reject(new Error('timed out connecting to build-01:7801')),
   })
