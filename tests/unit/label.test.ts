@@ -17,8 +17,9 @@ test('a title names checkout, repository, and machine in that order', () => {
   )
 })
 
-test('a path with no segment is not blank', () => {
+test('a path with no last segment falls back to the path itself', () => {
   assert.equal(workspaceLabel({ machine: 'box', repoPath: '/', name: 'x' }), 'x · / · box')
+  // An empty path is the whole fallback; the builder adds nothing of its own.
   assert.equal(workspaceLabel({ machine: 'box', repoPath: '', name: 'x' }), 'x ·  · box')
 })
 
