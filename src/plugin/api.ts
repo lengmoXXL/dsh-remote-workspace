@@ -25,14 +25,13 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 // which is how these routes register without injecting the service.
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { NodeConnections, NodeStatus } from '../models/machines.ts'
-import type { NodeId } from '../storage/nodes.ts'
-import type { NodeRecord, NodeRegistry, NodeTransport } from '../storage/nodes.ts'
-import { toNodeView } from '../storage/nodes.ts'
+import type { NodeId, NodeRecord, NodeRegistry, NodeTransport } from '../storage/nodes.ts'
+import { asNodeId, toNodeView } from '../storage/nodes.ts'
 import { asAnchorId } from '../storage/anchors.ts'
-import { asNodeId } from '../storage/nodes.ts'
 import { asRepoId } from '../storage/repos.ts'
 import type { RepoRecord, RepoStore } from '../storage/repos.ts'
 import { NodeRequestError } from '../remote/client.ts'
+import type { NodeChannel } from '../remote/client.ts'
 import type { WorktreeManager } from '../models/worktrees.ts'
 import { homedir } from 'node:os'
 import type { LocalPathType } from '../local/fs.ts'
@@ -193,6 +192,19 @@ function statusOf(connections: NodeConnections, record: NodeRecord): NodeStatus 
 }
 
 /**
+ * The live channel to one machine, or the client error this API answers with.
+ * @param deps - the management dependencies.
+ * @param nodeId - the machine to reach.
+ * @returns the live channel.
+ * @throws ApiError 409 when the machine is not connected.
+ */
+function requireChannel(deps: ManagementApiDeps, nodeId: NodeId): NodeChannel {
+  const channel = deps.connections.channel(nodeId)
+  if (channel === undefined) throw new ApiError(409, `node "${nodeId}" is not connected`)
+  return channel
+}
+
+/**
  * Resolve a node id to a stored record, or fail as a client error.
  * @param registry - the durable registry.
  * @param nodeId - the path segment.
@@ -220,9 +232,7 @@ async function resolveOnNode(
   path: string,
 ): Promise<string> {
   if (record.transport.kind === 'local') return await resolveLocalPath(path)
-  const channel = deps.connections.channel(record.nodeId)
-  if (channel === undefined) throw new ApiError(409, `node "${record.nodeId}" is not connected`)
-  const resolved = await channel.request('fs.resolve', { path })
+  const resolved = await requireChannel(deps, record.nodeId).request('fs.resolve', { path })
   return resolved.canonicalPath
 }
 
@@ -240,9 +250,7 @@ async function statOnNode(
   path: string,
 ): Promise<LocalPathType | undefined> {
   if (record.transport.kind === 'local') return await localPathType(path)
-  const channel = deps.connections.channel(record.nodeId)
-  if (channel === undefined) throw new ApiError(409, `node "${record.nodeId}" is not connected`)
-  return (await channel.request('fs.stat', { path }))?.type
+  return (await requireChannel(deps, record.nodeId).request('fs.stat', { path }))?.type
 }
 
 /**
@@ -269,27 +277,28 @@ async function reportRepo(deps: ManagementApiDeps, record: RepoRecord): Promise<
   // undefined one, under `exactOptionalPropertyTypes`.
   const placed = root === undefined ? {} : { worktreeRoot: root }
   const node = deps.registry.get(record.nodeId)
+  let git = false
+  let error: string | undefined
   try {
     if (node?.transport.kind === 'local') {
-      return { repo: record, ...placed, git: await isRepository(record.repoPath) }
+      git = await isRepository(record.repoPath)
+    } else {
+      const channel = deps.connections.channel(record.nodeId)
+      if (channel === undefined) {
+        error = `node "${record.nodeId}" is not connected`
+      } else {
+        await channel.request('git.repoState', { repoPath: record.repoPath })
+        git = true
+      }
     }
-    const channel = deps.connections.channel(record.nodeId)
-    if (channel === undefined) {
-      return { repo: record, ...placed, git: false, error: `node "${record.nodeId}" is not connected` }
-    }
-    await channel.request('git.repoState', { repoPath: record.repoPath })
-    return { repo: record, ...placed, git: true }
-  } catch (error) {
-    if (error instanceof NodeRequestError && error.data.code === 'GIT_NOT_A_REPOSITORY') {
-      return { repo: record, ...placed, git: false }
-    }
-    return {
-      repo: record,
-      ...placed,
-      git: false,
-      error: error instanceof Error ? error.message : String(error),
+  } catch (caught) {
+    // The daemon's own "not a repository" answers the question; anything else
+    // means it could not be put to the machine.
+    if (!(caught instanceof NodeRequestError && caught.data.code === 'GIT_NOT_A_REPOSITORY')) {
+      error = caught instanceof Error ? caught.message : String(caught)
     }
   }
+  return { repo: record, ...placed, git, ...error === undefined ? {} : { error } }
 }
 
 /**
@@ -615,9 +624,7 @@ export async function handleNodeApi(request: ApiRequest, deps: ManagementApiDeps
       const path = await resolveOnNode(deps, record, requested === ''
         ? deps.connections.status(nodeId).info?.homedir ?? '/'
         : requested)
-      const channel = deps.connections.channel(nodeId)
-      if (channel === undefined) throw new ApiError(409, `node "${nodeId}" is not connected`)
-      const listing = await channel.request('fs.listDir', { path })
+      const listing = await requireChannel(deps, nodeId).request('fs.listDir', { path })
       return {
         status: 200,
         body: {
