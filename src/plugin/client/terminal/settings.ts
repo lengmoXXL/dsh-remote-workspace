@@ -32,11 +32,18 @@ const GENERIC_FAMILY = 'monospace'
  * @returns whether the family is monospace.
  */
 function isMonospace(context: CanvasRenderingContext2D, family: string): boolean {
-  const advance = (glyphs: string): number => {
-    context.font = `72px "${family}", monospace`
+  const width = (glyphs: string, stack: string): number => {
+    context.font = `72px ${stack}`
     return context.measureText(glyphs).width
   }
-  return advance('iiiiiiiiii') === advance('WWWWWWWWWW')
+  // A family that cannot draw the probe measures as whatever it falls back to,
+  // which makes every such family look monospaced: only families that draw the
+  // probe themselves are judged.
+  const draws = ['monospace', 'serif'].some(generic =>
+    width('miW', `"${family}", ${generic}`) !== width('miW', generic))
+  if (!draws) return false
+  return width('iiiiiiiiii', `"${family}", monospace`)
+    === width('WWWWWWWWWW', `"${family}", monospace`)
 }
 
 /**

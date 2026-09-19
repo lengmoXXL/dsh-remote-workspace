@@ -84,6 +84,9 @@ export function TerminalSettingsSection({ t }: PropsLocale<TerminalNamespace>): 
           <Menu
             open={fontOpen}
             compact
+            // Fixed to the viewport and capped there: a list this long must
+            // scroll itself rather than stretch the settings page.
+            portal
             selectedId={settings.fontFamily}
             items={(fonts ?? [settings.fontFamily]).map(family => ({ id: family, label: family }))}
             onSelect={(family) => {
