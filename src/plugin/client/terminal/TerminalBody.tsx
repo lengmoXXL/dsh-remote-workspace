@@ -12,7 +12,12 @@
  */
 
 import { useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
-import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
+import {
+  Button,
+  IconCloseOutline16,
+  IconPlusOutline16,
+  IconRefreshOutline16,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime, Translate } from '@deepseek-ai/dsh-client-ui-slots'
 import type { TerminalPanelFace } from './index.ts'
 import type { TerminalKey, TerminalNamespace } from './locales.ts'
@@ -107,12 +112,12 @@ export function TerminalBody(
               className={css.action}
               size="sm"
               variant="ghost"
+              icon={<IconCloseOutline16 />}
               data-terminal-end
+              aria-label={t('action.end')}
               title={t('action.end')}
               onClick={end}
-            >
-              {t('action.end')}
-            </Button>
+            />
           )
           : null}
         {state.kind === 'live' && state.fixedSize
@@ -124,24 +129,25 @@ export function TerminalBody(
               className={css.action}
               size="sm"
               variant="ghost"
+              icon={<IconRefreshOutline16 />}
+              aria-label={t('action.restart')}
+              title={t('action.restart')}
               onClick={() => {
                 restartTerminal(sessionId, tab.id)
               }}
-            >
-              {t('action.restart')}
-            </Button>
+            />
           )
           : null}
         <Button
           className={css.action}
           size="sm"
           variant="ghost"
+          icon={<IconPlusOutline16 />}
           data-terminal-newtab
+          aria-label={t('action.newTab')}
           title={t('action.newTab')}
           onClick={openAnother}
-        >
-          {t('action.newTab')}
-        </Button>
+        />
       </div>
       <div className={css.screen} ref={screen} />
     </div>

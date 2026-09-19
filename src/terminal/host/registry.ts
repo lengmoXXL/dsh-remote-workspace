@@ -285,6 +285,16 @@ export interface TerminalRegistryOptions {
    * @returns the node id and the title to show a reader.
    */
   readonly machine: (cwd: string) => { readonly label: string }
+  /**
+   * The directory a shell asked for one path actually runs in.
+   *
+   * A workspace routed to a machine is named here by its local anchor path,
+   * while the shell runs at the checkout on that machine. The row and the
+   * status line name where the shell is, not where its workspace is registered.
+   * @param cwd - the workspace directory the shell was asked for.
+   * @returns the directory the shell lands in.
+   */
+  readonly directory: (cwd: string) => string
 }
 
 /** A terminal request the registry refused. */
@@ -463,7 +473,9 @@ export function createTerminalRegistry(options: TerminalRegistryOptions): Termin
         label: `Terminal ${String(ordinal)}`,
         sessionId,
         machine: where.label,
-        cwd,
+        // The shell's own directory, which a routed workspace moves to the
+        // machine that holds the checkout.
+        cwd: options.directory(cwd),
         handle,
         buffer: Buffer.alloc(0),
         bytes: 0,

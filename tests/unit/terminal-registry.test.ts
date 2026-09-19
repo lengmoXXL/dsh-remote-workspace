@@ -77,6 +77,7 @@ function harness(detachGraceMs?: number): { registry: TerminalRegistry; terminal
     },
     settings: detachGraceMs === undefined ? settings : { ...settings, detachGraceMs },
     machine: () => ({ nodeId: 'local', label: 'Local' }),
+    directory: cwd => cwd,
   })
   return { registry, terminal, requests }
 }
@@ -120,6 +121,27 @@ test('a terminal is spawned through the seam and listed with its geometry', asyn
     cols: 120,
     rows: 40,
   }])
+})
+
+test('a routed workspace reports the directory the shell runs in', async () => {
+  const terminal = fakeTerminal()
+  const requests: TtySpawnRequest[] = []
+  const registry = createTerminalRegistry({
+    spawn: async (request) => {
+      requests.push(request)
+      return terminal.handle
+    },
+    settings,
+    machine: () => ({ nodeId: 'n1', label: 'build-01' }),
+    directory: () => '/srv/checkout',
+  })
+  const entry = await registry.open('s1', '/home/me/.dsh/anchors/n1/repo', { cols: 80, rows: 24 })
+
+  // The seam is asked for the path it can route, and the table names the
+  // directory the machine actually put the shell in.
+  assert.equal(requests[0]?.cwd, '/home/me/.dsh/anchors/n1/repo')
+  assert.equal(entry.cwd, '/srv/checkout')
+  assert.equal(registry.listFor('s1')[0]?.cwd, '/srv/checkout')
 })
 
 test('another Session cannot address a terminal, and the refusal does not name it as someone else’s', async () => {

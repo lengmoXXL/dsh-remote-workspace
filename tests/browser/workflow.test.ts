@@ -738,7 +738,6 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     await shot('05-repository-registered')
 
     // Cut a worktree and check the machine actually holds it.
-    await clickByText(page, /demo-repo/)
     await clickRowControl(page, 'demo-repo', 'newWorktree')
     await waitForForm(page, exact('newWorktree'), 'the new-worktree form')
     // The path field is filled from the start: the name finishes it, so an
@@ -876,7 +875,6 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     await waitForText(page, 'plain-dir', 'the plain directory row')
     // Both repository rows are on screen, and the plain directory is the one
     // registered second.
-    await clickByText(page, /plain-dir/)
     // Only the repository registered first can be cut from: the plain
     // directory's control is refused rather than hidden.
     assert.equal(
@@ -956,7 +954,6 @@ test('a remote worktree is created and removed through the browser', { timeout: 
 
     // The local machine leads the section, so its repository row is the first
     // one on the page once it is open.
-    await clickByText(page, /local-repo/)
     await clickRowControl(page, 'local-repo', 'newWorktree')
     await waitForForm(page, exact('newWorktree'), 'the local new-worktree form')
     await fillDialogInputByPlaceholder(page, new RegExp(escape(en.placeholderWorktreeName)), 'here')

@@ -120,8 +120,12 @@ interface AnchorRecord {
   readonly nodeId: NodeId
   /** A worktree's checkout, or the repository directory itself. */
   readonly kind: 'worktree' | 'directory'
+  /** The checkout's directory on the machine. */
+  readonly remoteRoot: string
   readonly repoPath: string
   readonly name: string
+  /** The branch a worktree sits on; a directory anchor has none. */
+  readonly branch?: string
 }
 
 /** One anchor, with whether it is currently openable. */
@@ -365,6 +369,12 @@ function WorktreeRow({ entry, busy, onRemove, onToggleOpen, t }: {
       <IconBranchOutline16 />
       <span className={css.worktreeMain}>
         <span className={css.worktreeName}>{entry.anchor.name}</span>
+        {entry.anchor.branch === undefined
+          ? null
+          : <span className={css.branch}>{entry.anchor.branch}</span>}
+        <span className={css.worktreePath} title={entry.anchor.remoteRoot}>
+          {entry.anchor.remoteRoot}
+        </span>
         {entry.error === undefined ? null : <span className={css.dim}>{entry.error}</span>}
       </span>
       <span className={css.trailing}>
@@ -396,7 +406,6 @@ export function RemoteWorktreesSection(props: SectionProps) {
   const [confirmation, setConfirmation] = useState<Confirmation | undefined>(undefined)
   const [confirmedOption, setConfirmedOption] = useState(false)
   const [openMachines, setOpenMachines] = useState<readonly string[]>([])
-  const [openRepos, setOpenRepos] = useState<readonly string[]>([])
 
   // Reads are in flight together while a mutation polls, and a remote read can
   // answer after a newer one: only the newest answer may be published.
@@ -561,9 +570,7 @@ export function RemoteWorktreesSection(props: SectionProps) {
                           they are shown while a step is in flight or a state is
                           one a dot cannot tell apart — a red dot names no
                           reason by itself. */}
-                      {note === undefined
-                        ? <span className={css.srOnly}>{t(here ? 'status.local' : badge.key)}</span>
-                        : <span className={css.meta}>{note}</span>}
+                      <span className={css.meta}>{note ?? t(here ? 'status.local' : badge.key)}</span>
                       <Button
                         size="sm"
                         icon={<IconProjectAddOutline16 />}
@@ -616,7 +623,6 @@ export function RemoteWorktreesSection(props: SectionProps) {
                       ? <div className={css.empty}>{t('repositoriesEmpty')}</div>
                       : repos.map(entry => {
                         const repo = entry.repo
-                        const repoOpen = openRepos.includes(repo.repoId)
                         const worktrees = worktreesOf(repo)
                         const directory = directoryOf(repo)
                         // Cutting a worktree needs git, and whether git owns the
@@ -630,19 +636,10 @@ export function RemoteWorktreesSection(props: SectionProps) {
                         const cannotOpen = entry.error !== undefined && directory === undefined
                         return (
                           <div key={repo.repoId} className={css.repoCard}>
-                            <DisclosureRow
-                              icon={<IconFolderOpen16 />}
-                              title={repo.name}
-                              open={repoOpen}
-                              expandable
-                              expandOnRowClick
-                              keepContentWhenOpen
-                              rowClassName={css.row}
-                              leadingClassName={css.leading}
-                              chevronClassName={css.chevronHidden}
-                              onToggle={() => toggle(openRepos, setOpenRepos, repo.repoId)}
-                              collapsedContent={(
-                                <span className={css.trailing}>
+                            <div className={css.row}>
+                              <span className={css.leading}><IconFolderOpen16 /></span>
+                              <span className={css.repoName}>{repo.name}</span>
+                              <span className={css.trailing}>
                                   <Button
                                     size="sm"
                                     icon={directory?.open === true
@@ -659,14 +656,11 @@ export function RemoteWorktreesSection(props: SectionProps) {
                                       directory?.open === true ? 'closeWorktree' : 'openWorktree',
                                       repo.name,
                                     )}
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      void mutate(() => (
-                                        directory?.open === true
-                                          ? props.closeDirectory(repo.repoId)
-                                          : props.openDirectory(repo.repoId)
-                                      ))
-                                    }}
+                                    onClick={() => void mutate(() => (
+                                      directory?.open === true
+                                        ? props.closeDirectory(repo.repoId)
+                                        : props.openDirectory(repo.repoId)
+                                    ))}
                                   />
                                   <Button
                                     size="sm"
@@ -674,10 +668,7 @@ export function RemoteWorktreesSection(props: SectionProps) {
                                     disabled={busy || !entry.git}
                                     aria-label={controlLabel(t, 'newWorktree', repo.name)}
                                     title={controlLabel(t, 'newWorktree', repo.name)}
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      setDialog({ kind: 'worktree', repo })
-                                    }}
+                                    onClick={() => setDialog({ kind: 'worktree', repo })}
                                   />
                                   <ActionsMenu
                                     name={repo.name}
@@ -694,10 +685,9 @@ export function RemoteWorktreesSection(props: SectionProps) {
                                       }),
                                     }]}
                                   />
-                                </span>
-                              )}
-                            >
-                              {worktrees.length === 0 && !entry.git ? null : (
+                              </span>
+                            </div>
+                            {worktrees.length === 0 && !entry.git ? null : (
                                 <div className={css.worktrees}>
                                   {worktrees.length === 0
                                     ? <div className={css.empty}>{t('worktreesEmpty')}</div>
@@ -723,8 +713,7 @@ export function RemoteWorktreesSection(props: SectionProps) {
                                       />
                                     ))}
                                 </div>
-                              )}
-                            </DisclosureRow>
+                            )}
                           </div>
                         )
                       })}

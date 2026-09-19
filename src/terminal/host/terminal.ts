@@ -152,7 +152,7 @@ export function attachTerminal(ctx: Context, registry: TerminalRegistry, socket:
       entryId = entry.id
       applied = { ...requested }
       registry.attach(entry.id, sink)
-      post({ t: 'ready', pid: entry.handle.pid, cwd, id: entry.id, label: entry.label })
+      post({ t: 'ready', pid: entry.handle.pid, cwd: entry.cwd, id: entry.id, label: entry.label })
       for (const data of typed.splice(0)) {
         void registry.write(entry.id, data).catch(() => undefined)
       }

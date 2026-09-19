@@ -383,6 +383,12 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       const nodeId = route.kind === 'remote' ? route.nodeId : LOCAL_NODE_ID
       return { label: registry.get(nodeId as NodeId)?.title ?? nodeId }
     },
+    directory: (cwd) => {
+      // The same route that decides the machine decides the directory: a shell
+      // in a routed workspace runs at the checkout on that machine.
+      const route = classifyPath(cwd, undefined, anchorStore.routes())
+      return route.kind === 'remote' ? route.remotePath : cwd
+    },
   })
   // The management API reads the terminal table too: the panel lists the
   // shells a Session has open and can end one no tab holds, so it is registered

@@ -67,6 +67,7 @@ function compose(): {
     spawn: async () => terminal.handle,
     settings,
     machine: () => ({ nodeId: 'local', label: 'Local' }),
+    directory: cwd => cwd,
   })
   const tools: ToolDefinition[] = []
   const ctx = {

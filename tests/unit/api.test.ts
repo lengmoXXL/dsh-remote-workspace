@@ -90,6 +90,7 @@ async function setup(connect?: Parameters<typeof createNodeConnections>[0]) {
     spawn: () => Promise.resolve(fakeTerminal(() => { terminations += 1 })),
     settings: { shell: '/bin/sh', shellArgs: [], env: {}, graceMs: 1000 },
     machine: () => ({ nodeId: LOCAL_NODE_ID, label: 'Local' }),
+    directory: cwd => cwd,
   })
   return {
     registry,

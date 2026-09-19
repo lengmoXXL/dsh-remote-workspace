@@ -96,6 +96,7 @@ function compose(): { registry: TerminalRegistry; tools: ToolDefinition[] } {
     spawn: request => tty.spawn(request),
     settings,
     machine: () => ({ nodeId: 'n1', label: 'n1' }),
+    directory: cwd => cwd,
   })
   const tools: ToolDefinition[] = []
   const ctx = {

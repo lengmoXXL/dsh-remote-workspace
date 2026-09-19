@@ -182,6 +182,7 @@ function terminalRegistry(
     spawn,
     settings: detachGraceMs === undefined ? settings : { ...settings, detachGraceMs },
     machine: () => ({ nodeId: 'local', label: 'Local' }),
+    directory: cwd => cwd,
   })
 }
 
