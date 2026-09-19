@@ -20,6 +20,7 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { reasonOf } from './api.ts'
 import type { DirListing, NodeId, RepoId, RepoRecord, T } from './Section.tsx'
+import type { RemoteWorktreesKey } from './locales.ts'
 import css from './Section.module.css'
 
 /** A labelled form field. */
@@ -36,6 +37,12 @@ function Field({ label, hint, children }: {
     </div>
   )
 }
+
+/** One field's label, marked when the form does not require it. */
+function optionalLabel(t: T, key: RemoteWorktreesKey): string {
+  return `${t(key)} · ${t('optional')}`
+}
+
 /** A failure shown inside a dialog, where the global banner is out of view. */
 function DialogError({ message }: { message: string | undefined }) {
   if (message === undefined) return null
@@ -46,6 +53,7 @@ function DialogError({ message }: { message: string | undefined }) {
     </div>
   )
 }
+
 /**
  * Add a machine by its SSH destination.
  *
@@ -112,22 +120,23 @@ export function AddMachineDialog({ busy, onClose, onSubmit, t }: {
         <Field label={t('fieldTarget')} hint={t('hintTarget')}>
           <Input value={target} placeholder={t('placeholderTarget')} onChange={e => setTarget(e.target.value)} />
         </Field>
-        <Field label={`${t('fieldSshPort')} · ${t('optional')}`} hint={t('hintSshPort')}>
+        <Field label={optionalLabel(t, 'fieldSshPort')} hint={t('hintSshPort')}>
           <Input value={sshPort} inputMode="numeric" onChange={e => setSshPort(e.target.value)} />
         </Field>
-        <Field label={`${t('fieldIdentityFile')} · ${t('optional')}`} hint={t('hintIdentityFile')}>
+        <Field label={optionalLabel(t, 'fieldIdentityFile')} hint={t('hintIdentityFile')}>
           <Input value={identityFile} placeholder={t('placeholderIdentityFile')} onChange={e => setIdentityFile(e.target.value)} />
         </Field>
         <Field label={t('fieldToken')} hint={t('hintToken')}>
           <Input type="password" value={token} onChange={e => setToken(e.target.value)} />
         </Field>
-        <Field label={`${t('fieldName')} · ${t('optional')}`}>
+        <Field label={optionalLabel(t, 'fieldName')}>
           <Input value={title} onChange={e => setTitle(e.target.value)} />
         </Field>
       </div>
     </Modal>
   )
 }
+
 /**
  * Browse one machine's directories and pick a repository root.
  *
@@ -228,6 +237,7 @@ function DirectoryPicker({ nodeId, value, onChange, listDirs, t }: {
     </div>
   )
 }
+
 /** The parent of an absolute POSIX directory, or undefined at the root. */
 function parentOf(path: string): string | undefined {
   if (path === '/' || path === '') return undefined
@@ -235,6 +245,7 @@ function parentOf(path: string): string | undefined {
   if (cut < 0) return undefined
   return cut === 0 ? '/' : path.slice(0, cut)
 }
+
 /** Whether one directory name answers the segment being typed. */
 function matchesName(name: string, prefix: string): boolean {
   // A dotted directory is furniture on this machine, not a suggestion, unless
@@ -242,6 +253,7 @@ function matchesName(name: string, prefix: string): boolean {
   if (name.startsWith('.') && !prefix.startsWith('.')) return false
   return prefix === '' || name.toLowerCase().startsWith(prefix.toLowerCase())
 }
+
 /**
  * Read a typed path the way a completion list should: the directory to list,
  * and the name segment to keep from it.
@@ -265,6 +277,7 @@ function browseTarget(text: string, entered: string | undefined): { dir: string;
   const dir = text.slice(0, cut)
   return { dir: dir.endsWith('/') ? withoutTail(dir) || '/' : dir, prefix: text.slice(cut + 1) }
 }
+
 /** A path without its trailing separators. */
 function withoutTail(path: string): string {
   return path.replace(/\/+$/, '')
@@ -341,7 +354,7 @@ export function AddRepoDialog({ nodeId, busy, onClose, onSubmit, listDirs, t }: 
           listDirs={listDirs}
           t={t}
         />
-        <Field label={`${t('fieldName')} · ${t('optional')}`}>
+        <Field label={optionalLabel(t, 'fieldName')}>
           <Input value={name} onChange={e => setName(e.target.value)} />
         </Field>
       </div>
