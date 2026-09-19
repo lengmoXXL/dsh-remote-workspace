@@ -204,17 +204,18 @@ impl SubprocessBackend {
             tokio::spawn(async move { await_child(waiter, child).await });
         }
 
-        self.processes
-            .lock()
-            .expect("process table poisoned")
-            .insert(managed.proc_id.clone(), managed.clone());
-        // A spawn dispatched just before the connection closed lands here after
-        // the table was drained: it owns nothing else, so it is ended now.
-        if self.closed.load(Ordering::SeqCst) {
-            self.processes
-                .lock()
-                .expect("process table poisoned")
-                .remove(&managed.proc_id);
+        // Decided under the table lock: a process that lands before `close` sets
+        // the flag is drained by it, and one that lands after is ended here.
+        let sealed = {
+            let mut table = self.processes.lock().expect("process table poisoned");
+            if self.closed.load(Ordering::SeqCst) {
+                true
+            } else {
+                table.insert(managed.proc_id.clone(), managed.clone());
+                false
+            }
+        };
+        if sealed {
             managed.dispose();
         }
 
