@@ -418,16 +418,13 @@ impl ManagedProcess {
     /// Retain one chunk for a collected window and, when the stream is piped,
     /// push it as a frame.
     fn capture(self: &Arc<Self>, which: Which, chunk: &[u8]) {
-        if let Some(buffer) = match which {
-            Which::Out => self.stdout.as_ref(),
-            Which::Err => self.stderr.as_ref(),
-        } {
+        let (buffer, piped) = match which {
+            Which::Out => (self.stdout.as_ref(), self.pipe_stdout),
+            Which::Err => (self.stderr.as_ref(), self.pipe_stderr),
+        };
+        if let Some(buffer) = buffer {
             buffer.push(chunk);
         }
-        let piped = match which {
-            Which::Out => self.pipe_stdout,
-            Which::Err => self.pipe_stderr,
-        };
         if !piped {
             return;
         }
