@@ -1,18 +1,17 @@
 /**
- * The terminal's settings section.
+ * The terminal's display settings, as the plugin's settings page draws them.
  *
- * One page of display preferences: the font, its size and line height, whether
- * the cursor blinks, and how many lines the browser keeps. Every row writes
- * through the same preferences the terminal draws with, so a change reaches the
- * shells already open and the ones opened later alike.
+ * The font, its size and line height, whether the cursor blinks, and how many
+ * lines the browser keeps. Every row writes through the same preferences the
+ * terminal draws with, so a change reaches the shells already open and the ones
+ * opened later alike.
  *
- * @module dsh-remote-workspace/plugin/client/terminal/TerminalSettingsSection
+ * @module dsh-remote-workspace/plugin/client/terminal/TerminalSettings
  */
 
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { Button, IconChevronDownOutline14, Input, Menu, Switch } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
-import type { TerminalNamespace } from './locales.ts'
+import type { T } from '../Section.tsx'
 import {
   TERMINAL_STEPS,
   monospaceFonts,
@@ -20,27 +19,36 @@ import {
   terminalDisplaySettings,
   writeTerminalDisplaySettings,
 } from './settings.ts'
-import css from './TerminalSettingsSection.module.css'
+import css from './TerminalSettings.module.css'
 
 /** One preference the section steps, as it draws the row. */
 interface StepRow {
   /** Which preference the row steps. */
   readonly key: 'fontSize' | 'lineHeight'
   /** The row's label. */
-  readonly label: 'settings.fontSize' | 'settings.lineHeight'
+  readonly label: 'terminalFontSize' | 'terminalLineHeight'
   /** How the value reads. */
   readonly show: (value: number) => string
 }
 
 /** The stepped rows, in the order they are drawn. */
 const STEPS: readonly StepRow[] = [
-  { key: 'fontSize', label: 'settings.fontSize', show: value => `${value} px` },
-  { key: 'lineHeight', label: 'settings.lineHeight', show: value => value.toFixed(1) },
+  { key: 'fontSize', label: 'terminalFontSize', show: value => `${value} px` },
+  { key: 'lineHeight', label: 'terminalLineHeight', show: value => value.toFixed(1) },
 ]
 
-/** Draw the terminal's display preferences. */
-export function TerminalSettingsSection({ t }: PropsLocale<TerminalNamespace>): ReactNode {
-  const settings = useSyncExternalStore(subscribeTerminalDisplaySettings, terminalDisplaySettings)
+/**
+ * Draw the terminal's display preferences.
+ * @param t - the settings section's translate.
+ * @returns the block, ready to sit under the machine tree.
+ */
+export function TerminalSettings({ t }: { t: T }): ReactNode {
+  // The stored preferences answer the server snapshot as well as the live one.
+  const settings = useSyncExternalStore(
+    subscribeTerminalDisplaySettings,
+    terminalDisplaySettings,
+    terminalDisplaySettings,
+  )
   const [fontOpen, setFontOpen] = useState(false)
   const [fonts, setFonts] = useState<readonly string[] | undefined>(undefined)
   // The typed rows are held as text while they are edited: a person typing
@@ -76,11 +84,11 @@ export function TerminalSettingsSection({ t }: PropsLocale<TerminalNamespace>): 
   }
 
   return (
-    <div className={css.section}>
-      <h3 className={css.title}>{t('settings.label')}</h3>
+    <div className={css.settings}>
+      <h3 className={css.title}>{t('terminal')}</h3>
       <div className={css.rows}>
         <div className={css.row}>
-          <span className={css.label}>{t('settings.font')}</span>
+          <span className={css.label}>{t('terminalFont')}</span>
           <Menu
             open={fontOpen}
             compact
@@ -97,8 +105,8 @@ export function TerminalSettingsSection({ t }: PropsLocale<TerminalNamespace>): 
             anchor={(
               <Button
                 size="sm"
-                aria-label={t('settings.font')}
-                title={t('settings.font')}
+                aria-label={t('terminalFont')}
+                title={t('terminalFont')}
                 onClick={() => {
                   setFontOpen(current => !current)
                   // The list is behind a permission, and the ask needs a gesture.
@@ -117,8 +125,8 @@ export function TerminalSettingsSection({ t }: PropsLocale<TerminalNamespace>): 
             <span className={css.step}>
               <Button
                 size="sm"
-                aria-label={t('settings.decrease')}
-                title={t('settings.decrease')}
+                aria-label={t('decrease')}
+                title={t('decrease')}
                 onClick={() => { bump(step.key, -1) }}
               >
                 −
@@ -126,8 +134,8 @@ export function TerminalSettingsSection({ t }: PropsLocale<TerminalNamespace>): 
               <span className={css.value}>{step.show(settings[step.key])}</span>
               <Button
                 size="sm"
-                aria-label={t('settings.increase')}
-                title={t('settings.increase')}
+                aria-label={t('increase')}
+                title={t('increase')}
                 onClick={() => { bump(step.key, 1) }}
               >
                 +
@@ -136,11 +144,11 @@ export function TerminalSettingsSection({ t }: PropsLocale<TerminalNamespace>): 
           </div>
         ))}
         <div className={css.row}>
-          <span className={css.label}>{t('settings.scrollback')}</span>
+          <span className={css.label}>{t('terminalScrollback')}</span>
           <Input
             className={css.number!}
             inputMode="numeric"
-            aria-label={t('settings.scrollback')}
+            aria-label={t('terminalScrollback')}
             value={scrollback ?? String(settings.scrollback)}
             onChange={(event) => { setScrollback(event.target.value) }}
             onBlur={commitScrollback}
@@ -150,11 +158,11 @@ export function TerminalSettingsSection({ t }: PropsLocale<TerminalNamespace>): 
           />
         </div>
         <div className={css.row}>
-          <span className={css.label}>{t('settings.cursorBlink')}</span>
+          <span className={css.label}>{t('terminalCursorBlink')}</span>
           <Switch
             checked={settings.cursorBlink}
             onChange={(next) => { writeTerminalDisplaySettings({ cursorBlink: next }) }}
-            label={t('settings.cursorBlink')}
+            label={t('terminalCursorBlink')}
           />
         </div>
       </div>

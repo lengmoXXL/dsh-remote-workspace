@@ -37,6 +37,15 @@ export const zh = {
   'status.failed': '连接失败',
   'status.disconnected': '已断开',
 
+  terminal: '终端',
+  terminalFont: '字体',
+  terminalFontSize: '字号',
+  terminalLineHeight: '行高',
+  terminalCursorBlink: '光标闪烁',
+  terminalScrollback: '回滚行数',
+  decrease: '减小',
+  increase: '增大',
+
   connect: '连接',
   disconnect: '断开',
   removeMachine: '移除机器',
@@ -118,6 +127,15 @@ export const en = {
   'status.idle': 'Disconnected',
   'status.failed': 'Connection failed',
   'status.disconnected': 'Disconnected',
+
+  terminal: 'Terminal',
+  terminalFont: 'Font',
+  terminalFontSize: 'Font size',
+  terminalLineHeight: 'Line height',
+  terminalCursorBlink: 'Blinking cursor',
+  terminalScrollback: 'Scrollback',
+  decrease: 'Decrease',
+  increase: 'Increase',
 
   connect: 'Connect',
   disconnect: 'Disconnect',

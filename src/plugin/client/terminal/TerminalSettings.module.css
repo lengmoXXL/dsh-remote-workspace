@@ -1,18 +1,21 @@
 /*
- * Styles for the terminal's settings section.
+ * Styles for the terminal's display settings.
  *
  * Class names are local: the client bundle inlines this stylesheet through the
  * build's CSS Modules plugin, which hashes every selector and hands the
  * component the resulting map. Nothing here is global.
  *
- * Every value is a semantic --dsw-* alias, never a literal colour, so the
- * section follows the shell's light and dark themes without a second palette.
+ * Every value is a semantic --dsw-* alias, never a literal colour, so the block
+ * follows the shell's light and dark themes without a second palette.
  */
 
-.section {
+.settings {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
+  /* The block closes the page: a hairline parts it from the machine tree. */
+  padding-top: 14px;
+  border-top: 0.5px solid var(--dsw-alias-border-l1);
   color: var(--dsw-alias-label-primary);
   font-family: var(--dsw-font-family);
   font-size: 13px;

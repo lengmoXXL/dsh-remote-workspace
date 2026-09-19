@@ -42,15 +42,6 @@ export const zh = {
   'action.restart': '重新打开',
   'action.newTab': '新建终端',
 
-  'settings.label': '终端',
-  'settings.font': '字体',
-  'settings.fontSize': '字号',
-  'settings.lineHeight': '行高',
-  'settings.cursorBlink': '光标闪烁',
-  'settings.scrollback': '回滚行数',
-  'settings.decrease': '减小',
-  'settings.increase': '增大',
-
   loading: '正在读取…',
   cancel: '取消',
   close: '关闭',
@@ -88,15 +79,6 @@ export const en = {
   'action.end': 'End terminal',
   'action.restart': 'Restart',
   'action.newTab': 'New terminal',
-
-  'settings.label': 'Terminal',
-  'settings.font': 'Font',
-  'settings.fontSize': 'Font size',
-  'settings.lineHeight': 'Line height',
-  'settings.cursorBlink': 'Blinking cursor',
-  'settings.scrollback': 'Scrollback',
-  'settings.decrease': 'Decrease',
-  'settings.increase': 'Increase',
 
   loading: 'Loading…',
   cancel: 'Cancel',
