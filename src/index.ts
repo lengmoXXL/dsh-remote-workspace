@@ -368,12 +368,12 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     detachGraceMs: config.detachGraceMs ?? 0,
   }
 
-  // The registry is the one handle on the shells a person's tabs have open: the
-  // socket registers through it, the model-facing tool addresses it, and each
-  // side releases only what it owns.
   // One directory answers two questions — which machine serves it, and where a
   // shell in it lands — so the route that answers both is read once.
   const routeOf = (cwd: string) => classifyPath(cwd, undefined, anchorStore.routes())
+  // The registry is the one handle on the shells a person's tabs have open: the
+  // socket registers through it, the model-facing tool addresses it, and each
+  // side releases only what it owns.
   const terminals = createTerminalRegistry({
     // Read at open time, not at composition time: the routing provider is
     // published asynchronously from its own scope, exactly as the socket's

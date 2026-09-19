@@ -5,7 +5,7 @@
  * them rather than by a tag inside them:
  *
  * - **text** carries JSON control — opening a terminal, keystrokes, resizes,
- *   and the host's answers to all three;
+ *   and the host's answers;
  * - **binary** carries raw terminal bytes, host to browser only, so a shell's
  *   output is not base64-encoded and re-decoded once per chunk.
  *
