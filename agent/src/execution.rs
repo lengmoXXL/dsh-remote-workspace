@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use crate::failure::{Failure, Result};
+use crate::protocol::{signal_name, Outcome};
 
 /// Credential-shaped environment names, matching the subprocess seam's scrub.
 const SENSITIVE_ENV_MARKERS: [&str; 4] = ["KEY", "PASSWORD", "SECRET", "TOKEN"];
@@ -161,6 +162,22 @@ pub fn signal_group(pid: i32, signal: i32) {
         if libc::kill(-pid, signal) != 0 {
             libc::kill(pid, signal);
         }
+    }
+}
+
+/// The protocol's exit facts for one raw wait status.
+/// @param status - the status `waitpid` reported.
+/// @returns the outcome the wire reports for it.
+pub fn outcome_of_status(status: i32) -> Outcome {
+    if libc::WIFSIGNALED(status) {
+        return Outcome {
+            exit_code: None,
+            signal: signal_name(libc::WTERMSIG(status)),
+        };
+    }
+    Outcome {
+        exit_code: Some(libc::WEXITSTATUS(status)),
+        signal: None,
     }
 }
 

@@ -16,7 +16,7 @@ use base64::Engine;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::os::unix::fs::PermissionsExt;
-use std::os::unix::process::CommandExt;
+use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::Path;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -27,13 +27,12 @@ use tokio::process::{Child, ChildStdin};
 use tokio::sync::{watch, Mutex as AsyncMutex};
 
 use crate::execution::{
-    group_alive, scrubbed_environment, signal_group, unique_id, usable_directory, StreamBuffer,
+    group_alive, outcome_of_status, scrubbed_environment, signal_group, unique_id,
+    usable_directory, StreamBuffer,
 };
 use crate::failure::{Failure, Result};
 use crate::outbound::Outbound;
-use crate::protocol::{
-    signal_name, Outcome, OutputMode, SpawnSpec, StdinMode, SP_PIPE_NOTIFICATION,
-};
+use crate::protocol::{Outcome, OutputMode, SpawnSpec, StdinMode, SP_PIPE_NOTIFICATION};
 
 /// Interval between managed-range liveness checks after the child has exited.
 const GROUP_POLL: Duration = Duration::from_millis(25);
@@ -480,7 +479,7 @@ async fn read_stream<R: AsyncRead + Unpin>(
 /// Reap the direct child, then settle its facts once its pipes have drained.
 async fn await_child(managed: Arc<ManagedProcess>, mut child: Child) {
     let facts = match child.wait().await {
-        Ok(status) => facts_of(&status),
+        Ok(status) => outcome_of_status(status.into_raw()),
         Err(_) => Outcome {
             exit_code: None,
             signal: None,

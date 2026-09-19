@@ -25,7 +25,8 @@ use std::time::{Duration, Instant};
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::execution::{
-    group_alive, scrubbed_environment, signal_group, unique_id, usable_directory, StreamBuffer,
+    group_alive, outcome_of_status, scrubbed_environment, signal_group, unique_id,
+    usable_directory, StreamBuffer,
 };
 use crate::failure::{Failure, Result};
 use crate::protocol::{Outcome, TerminalSignal, TerminalSpawnSpec};
@@ -365,7 +366,8 @@ fn start_watchers(terminal: &Arc<ManagedTerminal>, master: RawFd) {
         loop {
             let waited = unsafe { libc::waitpid(reaper.pid, &mut status, 0) };
             if waited == reaper.pid {
-                *reaper.outcome.lock().expect("terminal outcome poisoned") = Some(facts_of(status));
+                *reaper.outcome.lock().expect("terminal outcome poisoned") =
+                    Some(outcome_of_status(status));
                 return;
             }
             if waited < 0 {
@@ -627,20 +629,6 @@ fn pty_slave_name(master: RawFd) -> std::io::Result<CString> {
         return Err(std::io::Error::last_os_error());
     }
     Ok(unsafe { CStr::from_ptr(pointer) }.to_owned())
-}
-
-/// The protocol's exit facts for one raw wait status.
-fn facts_of(status: c_int) -> Outcome {
-    if libc::WIFSIGNALED(status) {
-        return Outcome {
-            exit_code: None,
-            signal: crate::protocol::signal_name(libc::WTERMSIG(status)),
-        };
-    }
-    Outcome {
-        exit_code: Some(libc::WEXITSTATUS(status)),
-        signal: None,
-    }
 }
 
 /// The foreground process-group id of one terminal, or `None` when none resolves.
