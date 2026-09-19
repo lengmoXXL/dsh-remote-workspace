@@ -17,7 +17,6 @@ import {
   IconEllipsisOutline16,
   IconFolderClose16,
   IconFolderOpen16,
-  IconFolderOpenOutline16,
   IconGlobeOutline14,
   IconLinkOutline16,
   IconPlusOutline16,
@@ -401,7 +400,7 @@ function WorktreeRow({ entry, busy, onRemove, onToggleOpen, t }: {
       <span className={css.actions}>
         <Button
           size="sm"
-          icon={entry.open ? <IconFolderClose16 /> : <IconFolderOpenOutline16 />}
+          icon={entry.open ? <IconFolderOpen16 /> : <IconFolderClose16 />}
           disabled={busy}
           aria-label={openLabel}
           title={openLabel}
@@ -677,7 +676,7 @@ export function RemoteWorktreesSection(props: SectionProps) {
                           <Fragment key={repo.repoId}>
                             <div className={css.repo}>
                               <span className={css.repoIcon}>
-                                {entry.git ? <IconBranchOutline16 /> : <IconFolderOpen16 />}
+                                {entry.git ? <IconBranchOutline16 /> : <IconFolderClose16 />}
                               </span>
                               <span className={css.rowText}>
                                 <span className={css.repoName}>{repo.name}</span>
@@ -687,8 +686,8 @@ export function RemoteWorktreesSection(props: SectionProps) {
                                 <Button
                                   size="sm"
                                   icon={directory?.open === true
-                                    ? <IconFolderClose16 />
-                                    : <IconFolderOpenOutline16 />}
+                                    ? <IconFolderOpen16 />
+                                    : <IconFolderClose16 />}
                                   disabled={busy || cannotOpen}
                                   aria-label={directoryLabel}
                                   title={directoryLabel}

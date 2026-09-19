@@ -13,7 +13,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import {
   Button,
-  IconFolderOpen16,
+  IconFolderClose16,
   IconWarningOutline16,
   Input,
   Modal,
@@ -219,7 +219,7 @@ function DirectoryPicker({ nodeId, value, onChange, listDirs, t }: {
               className={css.pickerItem}
               onClick={() => navigate(entry.path)}
             >
-              <IconFolderOpen16 />
+              <IconFolderClose16 />
               <span>{entry.name}</span>
             </button>
           ))
