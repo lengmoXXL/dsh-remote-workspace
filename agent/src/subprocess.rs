@@ -139,6 +139,8 @@ impl SubprocessBackend {
         })?;
         let cwd = usable_directory(&spec.cwd, "SP_SPAWN_FAILED")?;
 
+        let (stdout_stdio, stdout_window) = output_stream(&spec.stdout);
+        let (stderr_stdio, stderr_window) = output_stream(&spec.stderr);
         let mut command = tokio::process::Command::new(&program);
         command
             .args(&spec.argv[1..])
@@ -147,8 +149,8 @@ impl SubprocessBackend {
             .envs(scrubbed_environment())
             .envs(spec.env.iter().cloned())
             .stdin(stdin_disposition(&spec.stdin))
-            .stdout(output_disposition(&spec.stdout))
-            .stderr(output_disposition(&spec.stderr));
+            .stdout(stdout_stdio)
+            .stderr(stderr_stdio);
         // A child leads its own process group so termination addresses the whole
         // managed range rather than only the process we started.
         command.as_std_mut().process_group(0);
@@ -176,8 +178,8 @@ impl SubprocessBackend {
             pid,
             grace_ms: spec.grace_ms,
             stdin: AsyncMutex::new(stdin),
-            stdout: collect_buffer(&spec.stdout),
-            stderr: collect_buffer(&spec.stderr),
+            stdout: stdout_window,
+            stderr: stderr_window,
             pipe_stdout: spec.stdout == OutputMode::Pipe,
             pipe_stderr: spec.stderr == OutputMode::Pipe,
             state: Mutex::new(ProcessState::default()),
@@ -534,19 +536,11 @@ fn stdin_disposition(mode: &StdinMode) -> Stdio {
     }
 }
 
-/// The stdio disposition for a piped, collected, or inherited output stream.
-fn output_disposition(mode: &OutputMode) -> Stdio {
+/// The stdio disposition and retained window for one output stream.
+fn output_stream(mode: &OutputMode) -> (Stdio, Option<StreamBuffer>) {
     match mode {
-        OutputMode::Inherit => Stdio::inherit(),
-        OutputMode::Pipe | OutputMode::Collect { .. } => Stdio::piped(),
-    }
-}
-
-/// The collected buffer for one stream, or `None` when the stream is inherited
-/// or piped — a piped stream is pushed as frames and has no window to read.
-fn collect_buffer(mode: &OutputMode) -> Option<StreamBuffer> {
-    match mode {
-        OutputMode::Collect { max_bytes } => Some(StreamBuffer::new(*max_bytes)),
-        _ => None,
+        OutputMode::Inherit => (Stdio::inherit(), None),
+        OutputMode::Pipe => (Stdio::piped(), None),
+        OutputMode::Collect { max_bytes } => (Stdio::piped(), Some(StreamBuffer::new(*max_bytes))),
     }
 }
