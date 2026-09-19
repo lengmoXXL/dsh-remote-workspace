@@ -336,7 +336,11 @@ pub fn absolute_path(verb: &str, path: &str, base: Option<&Path>) -> Result<Path
     }
 }
 
-/// Remove `.` and `..` segments lexically, as the plugin's own path join does.
+/// Remove `.` and `..` segments lexically.
+///
+/// Every caller hands it an absolute path — the plugin's own join produces one
+/// — so a leading `..` that has nothing to pop never arises; a `..` above the
+/// root resolves to the root, as it does for every other layer here.
 fn normalize(path: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for component in path.components() {
