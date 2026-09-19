@@ -208,9 +208,7 @@ impl FsBackend {
         if !info.is_file() {
             return Err(not_regular_file(verb, &target));
         }
-        if length == 0 {
-            return Ok(bytes_json(&[]));
-        }
+        // A zero length, and an offset at or past the end, both read nothing.
         let wanted = length.min(info.size().saturating_sub(offset));
         if wanted == 0 {
             return Ok(bytes_json(&[]));
