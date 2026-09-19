@@ -53,7 +53,7 @@ function fakeTerminal(): FakeTerminal {
     writes,
     resizes,
     terminations: () => terminations,
-    emit: (chunk) => { output.write(typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : chunk) },
+    emit: chunk => output.write(typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : chunk),
     exit: outcome => resolveOutcome(outcome),
     handle: {
       pid: 4242,
@@ -297,7 +297,7 @@ test('a configured valve releases a terminal nobody came back for', async () => 
   registry.detach('t1', sink)
 
   assert.deepEqual(registry.listFor('s1').map(view => view.state), ['detached'])
-  await new Promise(resolve => { setTimeout(resolve, 80) })
+  await new Promise(resolve => setTimeout(resolve, 80))
 
   assert.equal(terminal.terminations(), 1)
   assert.deepEqual(registry.listFor('s1'), [])
@@ -365,7 +365,7 @@ test('a wait with no offset searches the tail a read returns, so output that alr
   const { registry, terminal } = harness()
   await registry.open('s1', '/w/a', { cols: 80, rows: 24 })
   // One line beyond a default read's window, so the first line is not searched.
-  const lines = Array.from({ length: 200 }, (_, index) => `line ${String(index + 1)}`)
+  const lines = Array.from({ length: 200 }, (_, index) => `line ${index + 1}`)
   terminal.emit(`gone\n${lines.join('\n')}\n`)
   await settle()
 
