@@ -9,3 +9,14 @@
   inset: 0;
   padding: 4px 0 6px 8px;
 }
+
+/*
+ * xterm's helper textarea is the terminal's keyboard proxy: one cell at the
+ * cursor, drawn with `opacity: 0`. Chrome paints its :focus-visible ring all
+ * the same, so focusing a terminal programmatically — switching to its tab,
+ * reattaching a shell — flashes a blue box at the cursor. Nothing is lost by
+ * suppressing it: the cursor is the focus indicator a reader sees.
+ */
+.surface :global(.xterm-helper-textarea) {
+  outline: none;
+}
