@@ -492,6 +492,17 @@ fn too_large(verb: &str, path: &Path, detail: String) -> Failure {
     )
 }
 
+/// The refusal shared by the two paths a guarded create can find content on.
+fn not_observed(target: &Path) -> Failure {
+    Failure::new(
+        "FS_NOT_OBSERVED",
+        format!(
+            "cannot overwrite existing \"{}\" without reading it first",
+            target.display()
+        ),
+    )
+}
+
 /// Whether a target is a regular file, a directory, or something else.
 fn file_type(info: &fs::Metadata) -> &'static str {
     if info.is_file() {
@@ -576,13 +587,7 @@ fn guard_write(
             }
             Ok(())
         }
-        Some(WriteIntent::CreateIfAbsent) if existing.is_some() => Err(Failure::new(
-            "FS_NOT_OBSERVED",
-            format!(
-                "cannot overwrite existing \"{}\" without reading it first",
-                target.display()
-            ),
-        )),
+        Some(WriteIntent::CreateIfAbsent) if existing.is_some() => Err(not_observed(target)),
         _ => Ok(()),
     }
 }
@@ -597,13 +602,7 @@ fn publish(
 ) -> Result<()> {
     match publish_text(target, content, create_if_absent, mode) {
         Ok(()) => Ok(()),
-        Err(error) if is_errno(&error, &[libc::EEXIST]) => Err(Failure::new(
-            "FS_NOT_OBSERVED",
-            format!(
-                "cannot overwrite existing \"{}\" without reading it first",
-                target.display()
-            ),
-        )),
+        Err(error) if is_errno(&error, &[libc::EEXIST]) => Err(not_observed(target)),
         Err(error) => Err(io_failure(verb, target, &error)),
     }
 }
