@@ -359,11 +359,11 @@ export async function ensureAgent(options: EnsureAgentOptions): Promise<AgentEnd
   const state = await readState(run, ssh)
   // A pid that does not answer `kill -0` is a stale state file, not a running
   // agent; a pid that does is a process the install below must replace.
-  const stalePid = state !== undefined && await isAlive(run, ssh, state.pid) ? state.pid : undefined
+  const runningPid = state !== undefined && await isAlive(run, ssh, state.pid) ? state.pid : undefined
   // The recipe is read only where a reuse could happen, so the common path that
   // installs or replaces an agent pays for no extra round trip. It answers
   // whether the live agent's environment is the one this plugin would start.
-  if (state !== undefined && stalePid === state.pid && state.version === version
+  if (state !== undefined && runningPid === state.pid && state.version === version
     && await launchRecipeMatches(run, ssh)) {
     report({ phase: 'reusing', version })
     return { port: state.port, version, reused: true }
@@ -406,10 +406,10 @@ export async function ensureAgent(options: EnsureAgentOptions): Promise<AgentEnd
   // is enough to rotate it on the machine.
   await runChecked(run, ssh, WRITE_TOKEN, `could not write the agent token on "${ssh.target}"`, token)
 
-  if (stalePid !== undefined) {
+  if (runningPid !== undefined) {
     // Best effort: the process is being replaced, and a kill that races its
     // own exit must not fail an install that is otherwise fine.
-    await run(ssh, `kill ${String(stalePid)}`).catch(() => {})
+    await run(ssh, `kill ${String(runningPid)}`).catch(() => {})
   }
 
   report({ phase: 'starting', version })
