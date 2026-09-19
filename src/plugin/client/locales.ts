@@ -23,6 +23,7 @@ export const zh = {
   repositoriesEmpty: '这台机器上还没有登记仓库。',
   worktreesEmpty: '这个仓库还没有 worktree。',
 
+  localMachine: '本机',
   'status.ready': '已连接',
   'status.local': '始终可用',
   'status.connecting': '连接中',
@@ -105,6 +106,7 @@ export const en = {
   repositoriesEmpty: 'No repositories registered on this machine yet.',
   worktreesEmpty: 'No worktrees in this repository yet.',
 
+  localMachine: 'This host',
   'status.ready': 'Connected',
   'status.local': 'always available',
   'status.connecting': 'Connecting',

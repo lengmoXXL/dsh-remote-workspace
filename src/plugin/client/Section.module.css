@@ -7,26 +7,24 @@
  *
  * Every value is a semantic --dsw-* alias, never a literal colour, so the
  * section follows the shell's light and dark themes without a second palette.
+ *
+ * The page is one heading over a list of machine cards; inside a card, a
+ * machine, its repositories, and their worktrees are rows parted by hairlines
+ * rather than nested boxes, so the level a row belongs to is read from its
+ * indentation and its icon chip.
  */
 
 .section {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   color: var(--dsw-alias-label-primary);
   font-family: var(--dsw-font-family);
   font-size: 13px;
 }
-.head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.title { margin: 0; font-size: 14px; font-weight: 600; }
-.subtitle {
-  margin: 0;
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 12px;
-  line-height: 1.55;
-}
+.head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.title { margin: 0; font-size: 18px; font-weight: 600; }
 .toolbar { display: flex; align-items: center; gap: 6px; }
-.chevronHidden { display: none; }
 .alert {
   display: flex;
   align-items: flex-start;
@@ -40,99 +38,141 @@
   word-break: break-word;
 }
 .empty {
-  padding: 10px 4px;
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 12px;
-  line-height: 1.55;
+  padding: 18px 14px;
+  color: var(--dsw-alias-label-caption);
+  font-size: 12.5px;
+  text-align: center;
 }
-.tree { display: flex; flex-direction: column; gap: 8px; }
+.tree { display: flex; flex-direction: column; gap: 14px; }
+
 .card {
-  border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: 10px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 12px;
   background: var(--dsw-alias-bg-layer-1);
+  box-shadow: var(--dsw-elevation-soft);
   overflow: hidden;
 }
-.trailing {
-  display: inline-flex;
+.cardHead { display: flex; align-items: center; gap: 12px; padding: 13px 14px; }
+.cardHead:hover { background: var(--dsw-alias-interactive-bg-hover); }
+
+/* The chip, the name, and the state are one control: they fold the machine,
+   while the actions beside them act on it. */
+.headMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
   align-items: center;
   gap: 12px;
-  margin-left: auto;
-  /* Keeps the cluster off the title however short the title is. */
-  padding-left: 14px;
-  /* A leading title truncates before the status or an action is squeezed. */
-  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
-/* The shared disclosure row is a 24px line built for dense list rows. A
-   machine or repository header carries a status cluster, so it gets the height
-   that cluster needs. */
-/* Scoped under the card so these rules outrank the primitive's own module
-   classes regardless of which stylesheet the document received last. */
-.card .row {
-  height: auto;
-  min-height: calc(28px + var(--dsh-content-font-delta, 0px));
-  /* Horizontal padding belongs on the row: without it the status cluster ends
-     flush against the card border while the leading glyph only looks inset. */
-  padding: 3px 12px;
+.headMain:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
+.machineIcon {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: var(--dsw-alias-bg-module-platform);
+  color: var(--dsw-alias-label-secondary);
 }
-/* The shared row is built for dense lists and leaves 6px between the glyph and
-   the title; a header in this tree reads better with more. */
-.card .leading {
-  margin-right: 8px;
-}
-/* Every row's action cluster ends on one line, so a repository row drops the
-   padding its nested card already carries: without this, each level of nesting
-   pushes its actions another 12px left of the machine's. */
-.card .repos .row {
-  padding-right: 0;
-}
-.meta {
-  color: var(--dsw-alias-label-tertiary);
+.headText { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.machineTitle { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.machineTitle b { font-size: 14px; font-weight: 600; white-space: nowrap; }
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dsw-alias-label-secondary);
   font-size: 12px;
-  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.dim { color: var(--dsw-alias-label-dimmed); font-size: 12px; }
-.repos {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px 12px 10px 22px;
-  border-top: 0.5px solid var(--dsw-alias-border-l1);
-}
-.repoCard {
-  border: 0.5px solid var(--dsw-alias-border-l1);
-  border-radius: 8px;
-  background: var(--dsw-alias-bg-layer-2);
+.machineMeta {
+  color: var(--dsw-alias-label-caption);
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
-.worktrees {
+.actions { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+
+/* A connect reports the step it is on, in the colour of work in flight. */
+.progress {
+  padding: 11px 14px;
+  background: var(--dsw-alias-state-warn-tertiary);
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+.progressRow {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 6px 0 8px 22px;
-  border-top: 0.5px solid var(--dsw-alias-border-l1);
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--dsw-alias-state-warn-primary);
+  font-size: 12px;
+  font-weight: 500;
+}
+.track { height: 4px; margin-top: 8px; border-radius: 999px; background: var(--dsw-alias-bg-skeleton); overflow: hidden; }
+.trackFill { display: block; height: 100%; border-radius: 999px; background: var(--dsw-alias-state-warn-primary); transition: width .4s; }
+
+/* One level per rule: a repository is a row of the card, a worktree a row
+   indented under it on the platform fill. */
+.cardBody { border-top: 1px solid var(--dsw-alias-border-l1); }
+.cardBody > * + * { border-top: 1px solid var(--dsw-alias-border-l1); }
+.repo { display: flex; align-items: center; gap: 12px; padding: 11px 14px; }
+.repoIcon {
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  background: var(--dsw-alias-bg-module-platform);
+  color: var(--dsw-alias-label-tertiary);
+}
+.rowText { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.repoName { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.repoPath {
+  color: var(--dsw-alias-label-caption);
+  font-family: var(--ds-font-family-code);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .worktree {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 5px 0 5px 8px;
-  border-radius: 6px;
+  padding: 9px 14px 9px 40px;
+  background: var(--dsw-alias-bg-module-platform);
 }
-.worktree:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.worktreeIcon {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-secondary);
+}
 .worktreeMain { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
 .worktreeName {
-  font-size: 12px;
-  color: var(--dsw-alias-label-primary);
-  white-space: nowrap;
-}
-.repoName {
+  flex: none;
   font-size: 12.5px;
   font-weight: 500;
   color: var(--dsw-alias-label-primary);
   white-space: nowrap;
 }
 .branch {
+  flex: none;
   padding: 1px 6px;
   border-radius: 5px;
   background: var(--dsw-alias-state-success-tertiary);
@@ -148,6 +188,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.dim { color: var(--dsw-alias-label-dimmed); font-size: 12px; }
+
 .fields { display: flex; flex-direction: column; gap: 12px; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .label { color: var(--dsw-alias-label-secondary); font-size: 12px; }
@@ -187,6 +229,14 @@
   text-align: left;
   cursor: pointer;
 }
+.pickerItem + .pickerItem { border-top: 1px solid var(--dsw-alias-border-l1); }
 .pickerItem:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .pickerEmpty { padding: 14px 10px; color: var(--dsw-alias-label-tertiary); font-size: 12px; }
+/* The confirming dialog's body: what the action does, before it is taken. */
+.subtitle {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
 .confirm { display: flex; flex-direction: column; gap: 12px; }

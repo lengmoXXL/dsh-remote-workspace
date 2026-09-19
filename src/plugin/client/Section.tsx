@@ -9,10 +9,9 @@
  * @module dsh-remote-workspace/plugin/client/Section
  */
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   Button,
-  DisclosureRow,
   IconBranchOutline16,
   IconCloseOutline16,
   IconEllipsisOutline16,
@@ -41,7 +40,14 @@ import css from './Section.module.css'
 /** The locale seat this section reads, including its template parameters. */
 export type T = (key: RemoteWorktreesKey, params?: Record<string, unknown>) => string
 
-/** How the host reaches a machine's daemon. */
+/**
+ * How the host reaches a machine's daemon.
+ *
+ * The host owns this union and sends it as it stored it; the client restates it
+ * rather than importing it, because the host's module carries a file store. A
+ * `direct` machine is one an older document named by address — nothing mints
+ * one now — and it still has to render.
+ */
 type NodeTransport =
   | {
     readonly kind: 'ssh'
@@ -50,6 +56,11 @@ type NodeTransport =
   | {
     /** This host, which needs no daemon and no connection. */
     readonly kind: 'local'
+  }
+  | {
+    readonly kind: 'direct'
+    readonly host: string
+    readonly port: number
   }
 
 /** One machine as the host projects it. */
@@ -231,33 +242,44 @@ function statusOf(state: NodeState): {
 }
 
 /**
+ * How far along a connect reads, by the step it is on.
+ *
+ * The host publishes the step, not a fraction of the work: the bar advances one
+ * step at a time and the label beside it names the step, so the number is that
+ * step's share of the sequence rather than a measurement.
+ */
+const PHASE_PERCENT = { checking: 8, reusing: 38, fetching: 58, uploading: 72, starting: 92 } as const
+
+/**
  * What a step in flight reads as.
  *
  * Installing or updating the agent is the slow part of a connection and the
  * only part with anything to say, so a machine that is mid-install reports the
  * step rather than a bare "connecting".
  * @param progress - the step the host published.
- * @returns the locale key and its parameters.
+ * @returns the locale key, its parameters, and how far the sequence has come.
  */
 function progressText(progress: AgentProgress): {
   key: RemoteWorktreesKey
   params?: Record<string, unknown>
+  percent: number
 } {
+  const percent = PHASE_PERCENT[progress.phase]
   if (progress.phase === 'reusing') {
-    return { key: 'progress.reusing', params: { version: progress.version } }
+    return { key: 'progress.reusing', params: { version: progress.version }, percent }
   }
   if (progress.phase === 'fetching') {
     if (progress.source === 'cache') {
-      return { key: 'progress.cached', params: { version: progress.version } }
+      return { key: 'progress.cached', params: { version: progress.version }, percent }
     }
     if (progress.source === 'network') {
-      return { key: 'progress.downloading', params: { asset: progress.asset ?? progress.version } }
+      return { key: 'progress.downloading', params: { asset: progress.asset ?? progress.version }, percent }
     }
-    return { key: 'progress.fetching', params: { version: progress.version } }
+    return { key: 'progress.fetching', params: { version: progress.version }, percent }
   }
-  if (progress.phase === 'uploading') return { key: 'progress.uploading' }
-  if (progress.phase === 'starting') return { key: 'progress.starting' }
-  return { key: 'progress.checking' }
+  if (progress.phase === 'uploading') return { key: 'progress.uploading', percent }
+  if (progress.phase === 'starting') return { key: 'progress.starting', percent }
+  return { key: 'progress.checking', percent }
 }
 
 /**
@@ -365,7 +387,7 @@ function WorktreeRow({ entry, busy, onRemove, onToggleOpen, t }: {
   const openLabel = controlLabel(t, entry.open ? 'closeWorktree' : 'openWorktree', entry.anchor.name)
   return (
     <div className={css.worktree}>
-      <IconBranchOutline16 />
+      <span className={css.worktreeIcon}><IconBranchOutline16 /></span>
       <span className={css.worktreeMain}>
         <span className={css.worktreeName}>{entry.anchor.name}</span>
         {entry.anchor.branch === undefined
@@ -376,7 +398,7 @@ function WorktreeRow({ entry, busy, onRemove, onToggleOpen, t }: {
         </span>
         {entry.error === undefined ? null : <span className={css.dim}>{entry.error}</span>}
       </span>
-      <span className={css.trailing}>
+      <span className={css.actions}>
         <Button
           size="sm"
           icon={entry.open ? <IconFolderClose16 /> : <IconFolderOpenOutline16 />}
@@ -489,7 +511,7 @@ export function RemoteWorktreesSection(props: SectionProps) {
   return (
     <div className={css.section}>
       <div className={css.head}>
-        <h3 className={css.title}>{t('title')}</h3>
+        <h2 className={css.title}>{t('title')}</h2>
         <div className={css.toolbar}>
           <Button
             size="sm"
@@ -534,11 +556,19 @@ export function RemoteWorktreesSection(props: SectionProps) {
             // This host has no destination, no tunnel, no token, and no
             // connection to make or break: it is where the harness already is.
             const here = node.transport.kind === 'local'
-            // What the row says in words: what went wrong, the step in flight,
-            // or the state — this host reads as always being available.
-            const note = status?.error ?? (step === undefined
-              ? t(here ? 'status.local' : badge.key)
-              : t(step.key, step.params))
+            // What the state pill says in words: what went wrong, or the state —
+            // this host reads as always being available. The step in flight has
+            // its own line under the header.
+            const note = status?.error ?? t(here ? 'status.local' : badge.key)
+            // Where the machine is and, once a forward is up, where it answers.
+            const where = node.transport.kind === 'ssh'
+              ? node.transport.target
+              : node.transport.kind === 'direct'
+                ? `${node.transport.host}:${String(node.transport.port)}`
+                : t('localMachine')
+            const reach = status?.localPort === undefined
+              ? where
+              : `${where} · ${t('forwarding', { port: status.localPort })}`
             const connectLabel = controlLabel(
               t,
               state === 'ready' ? 'disconnect' : 'connect',
@@ -547,76 +577,81 @@ export function RemoteWorktreesSection(props: SectionProps) {
             const repositoryLabel = controlLabel(t, 'addRepository', node.title)
             return (
               <div key={node.nodeId} className={css.card}>
-                <DisclosureRow
-                  icon={<IconGlobeOutline14 />}
-                  title={node.title}
-                  open={machineOpen}
-                  expandable
-                  expandOnRowClick
-                  keepContentWhenOpen
-                  rowClassName={css.row}
-                  leadingClassName={css.leading}
-                  chevronClassName={css.chevronHidden}
-                  onToggle={() => toggle(openMachines, setOpenMachines, node.nodeId)}
-                  collapsedContent={(
-                    <span className={css.trailing}>
-                      {node.transport.kind === 'ssh'
-                        ? <span className={css.meta}>{node.transport.target}</span>
-                        : null}
-                      {status?.localPort === undefined
-                        ? null
-                        : <Tag tone="neutral">{t('forwarding', { port: status.localPort })}</Tag>}
-                      {here || node.hasToken ? null : <Tag tone="warning">{t('noToken')}</Tag>}
-                      <StateDot state={badge.dot} />
-                      <span className={css.meta}>{note}</span>
+                <div className={css.cardHead}>
+                  <button
+                    type="button"
+                    className={css.headMain}
+                    aria-expanded={machineOpen}
+                    onClick={() => toggle(openMachines, setOpenMachines, node.nodeId)}
+                  >
+                    <span className={css.machineIcon}><IconGlobeOutline14 /></span>
+                    <span className={css.headText}>
+                      <span className={css.machineTitle}>
+                        <b>{node.title}</b>
+                        <span className={css.status}>
+                          <StateDot state={badge.dot} size={7} />
+                          <span>{note}</span>
+                        </span>
+                      </span>
+                      <span className={css.machineMeta}>{reach}</span>
+                    </span>
+                  </button>
+                  <span className={css.actions}>
+                    {here || node.hasToken ? null : <Tag tone="warning">{t('noToken')}</Tag>}
+                    <Button
+                      size="sm"
+                      icon={<IconProjectAddOutline16 />}
+                      disabled={busy}
+                      aria-label={repositoryLabel}
+                      title={repositoryLabel}
+                      onClick={() => { setDialog({ kind: 'repo', nodeId: node.nodeId }) }}
+                    />
+                    {here ? null : (
                       <Button
                         size="sm"
-                        icon={<IconProjectAddOutline16 />}
+                        icon={state === 'ready' ? <IconCloseOutline16 /> : <IconLinkOutline16 />}
                         disabled={busy}
-                        aria-label={repositoryLabel}
-                        title={repositoryLabel}
-                        onClick={(event) => {
-                          // The row below folds on a click, and this sits in it.
-                          event.stopPropagation()
-                          setDialog({ kind: 'repo', nodeId: node.nodeId })
+                        aria-label={connectLabel}
+                        title={connectLabel}
+                        onClick={() => {
+                          void mutate(() => (state === 'ready'
+                            ? props.disconnectNode(node.nodeId)
+                            : props.connectNode(node.nodeId)))
                         }}
                       />
-                      {here ? null : (
-                        <Button
-                          size="sm"
-                          icon={state === 'ready' ? <IconCloseOutline16 /> : <IconLinkOutline16 />}
-                          disabled={busy}
-                          aria-label={connectLabel}
-                          title={connectLabel}
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            void mutate(() => (state === 'ready'
-                              ? props.disconnectNode(node.nodeId)
-                              : props.connectNode(node.nodeId)))
-                          }}
-                        />
-                      )}
-                      {here ? null : (
-                        <ActionsMenu
-                          name={node.title}
-                          busy={busy}
-                          t={t}
-                          actions={[{
-                            id: 'removeMachine',
-                            label: t('removeMachine'),
-                            danger: true,
-                            run: () => confirm({
-                              titleKey: 'removeMachineTitle',
-                              bodyKey: 'removeMachineBody',
-                              run: () => props.removeNode(node.nodeId),
-                            }),
-                          }]}
-                        />
-                      )}
-                    </span>
-                  )}
-                >
-                  <div className={css.repos}>
+                    )}
+                    {here ? null : (
+                      <ActionsMenu
+                        name={node.title}
+                        busy={busy}
+                        t={t}
+                        actions={[{
+                          id: 'removeMachine',
+                          label: t('removeMachine'),
+                          danger: true,
+                          run: () => confirm({
+                            titleKey: 'removeMachineTitle',
+                            bodyKey: 'removeMachineBody',
+                            run: () => props.removeNode(node.nodeId),
+                          }),
+                        }]}
+                      />
+                    )}
+                  </span>
+                </div>
+                {step === undefined ? null : (
+                  <div className={css.progress}>
+                    <div className={css.progressRow}>
+                      <span>{t(step.key, step.params)}</span>
+                      <span>{step.percent}%</span>
+                    </div>
+                    <div className={css.track}>
+                      <i className={css.trackFill} style={{ width: `${step.percent}%` }} />
+                    </div>
+                  </div>
+                )}
+                {machineOpen ? (
+                  <div className={css.cardBody}>
                     {repos.length === 0
                       ? <div className={css.empty}>{t('repositoriesEmpty')}</div>
                       : repos.map(entry => {
@@ -639,11 +674,16 @@ export function RemoteWorktreesSection(props: SectionProps) {
                         )
                         const worktreeLabel = controlLabel(t, 'newWorktree', repo.name)
                         return (
-                          <div key={repo.repoId} className={css.repoCard}>
-                            <div className={css.row}>
-                              <span className={css.leading}><IconFolderOpen16 /></span>
-                              <span className={css.repoName}>{repo.name}</span>
-                              <span className={css.trailing}>
+                          <Fragment key={repo.repoId}>
+                            <div className={css.repo}>
+                              <span className={css.repoIcon}>
+                                {entry.git ? <IconBranchOutline16 /> : <IconFolderOpen16 />}
+                              </span>
+                              <span className={css.rowText}>
+                                <span className={css.repoName}>{repo.name}</span>
+                                <span className={css.repoPath} title={repo.repoPath}>{repo.repoPath}</span>
+                              </span>
+                              <span className={css.actions}>
                                 <Button
                                   size="sm"
                                   icon={directory?.open === true
@@ -683,13 +723,9 @@ export function RemoteWorktreesSection(props: SectionProps) {
                                 />
                               </span>
                             </div>
-                            {worktrees.length === 0 && !entry.git ? null : (
-                              <div className={css.worktrees}>
-                                {worktrees.length === 0
-                                  ? <div className={css.empty}>{t('worktreesEmpty')}</div>
-                                  : worktrees.map(item => (
-                                    <WorktreeRow
-                                      key={item.anchor.anchorId}
+                            {worktrees.map(item => (
+                              <WorktreeRow
+                                key={item.anchor.anchorId}
                                       entry={item}
                                       busy={busy}
                                       t={t}
@@ -698,23 +734,24 @@ export function RemoteWorktreesSection(props: SectionProps) {
                                           ? props.closeWorktree(item.anchor.anchorId)
                                           : props.openWorktree(item.anchor.anchorId)
                                       ))}
-                                      onRemove={() => confirm({
-                                        titleKey: 'removeWorktreeTitle',
-                                        bodyKey: item.managed
-                                          ? 'removeWorktreeBody'
-                                          : 'removeAdoptedWorktreeBody',
-                                        optionKey: 'removeWorktreeBranch',
-                                        run: deleteBranch => props.removeWorktree(item.anchor.anchorId, deleteBranch),
-                                      })}
-                                    />
-                                  ))}
-                              </div>
-                            )}
-                          </div>
+                                onRemove={() => confirm({
+                                  titleKey: 'removeWorktreeTitle',
+                                  bodyKey: item.managed
+                                    ? 'removeWorktreeBody'
+                                    : 'removeAdoptedWorktreeBody',
+                                  optionKey: 'removeWorktreeBranch',
+                                  run: deleteBranch => props.removeWorktree(item.anchor.anchorId, deleteBranch),
+                                })}
+                              />
+                            ))}
+                            {worktrees.length > 0 || !entry.git
+                              ? null
+                              : <div className={css.empty}>{t('worktreesEmpty')}</div>}
+                          </Fragment>
                         )
                       })}
                   </div>
-                </DisclosureRow>
+                ) : null}
               </div>
             )
           })}
