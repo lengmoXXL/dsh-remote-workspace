@@ -55,12 +55,12 @@ export interface RoutingShellDeps {
  */
 export function createRoutingShellExecutor(deps: RoutingShellDeps): ShellExecutorContract {
   /**
-   * Whether a workdir belongs to a node.
-   * @param workdir - the spec's resolved working directory.
-   * @returns true when the remote delegate must own the execution.
+   * The delegate that owns one workdir.
+   * @param workdir - the resolved working directory of the request or spec.
+   * @returns the machine's executor for a remote path, this host's otherwise.
    */
-  const isRemote = (workdir: string): boolean =>
-    classifyPath(workdir, undefined, deps.anchors()).kind === 'remote'
+  const delegateFor = (workdir: string): ShellExecutor =>
+    classifyPath(workdir, undefined, deps.anchors()).kind === 'remote' ? deps.remoteShell : deps.localShell
 
   return {
     // The fact is "the mode this executor confines at by default", and the
@@ -74,17 +74,15 @@ export function createRoutingShellExecutor(deps: RoutingShellDeps): ShellExecuto
     },
 
     resolve(request: ShellExecRequest): ShellExecSpec {
-      return isRemote(request.workdir ?? '')
-        ? deps.remoteShell.resolve(request)
-        : deps.localShell.resolve(request)
+      return delegateFor(request.workdir ?? '').resolve(request)
     },
 
     run(spec: ShellExecSpec): Promise<ShellRunResult> {
-      return isRemote(spec.workdir) ? deps.remoteShell.run(spec) : deps.localShell.run(spec)
+      return delegateFor(spec.workdir).run(spec)
     },
 
     start(spec: ShellExecSpec): ShellProcess {
-      return isRemote(spec.workdir) ? deps.remoteShell.start(spec) : deps.localShell.start(spec)
+      return delegateFor(spec.workdir).start(spec)
     },
   }
 }

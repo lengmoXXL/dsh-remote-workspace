@@ -19,7 +19,7 @@ import type { TtyWire } from '../../remote/tty.ts'
 import type { ChannelLookup, NodeChannel } from '../../remote/client.ts'
 import { asTermId } from '../../remote/protocol.ts'
 import type { AnchorRoute } from '../../storage/anchors.ts'
-import { ambiguousPathMessage, classifyPath } from '../../models/routing.ts'
+import { remoteTarget } from './remote.ts'
 
 /**
  * The members this provider implements, narrowed from the seam class so the
@@ -71,16 +71,9 @@ export function terminalWire(channel: NodeChannel): TtyWire {
 export function createRoutingTty(deps: RoutingTtyDeps): TtyRuntimeContract {
   return {
     async spawn(request: TtySpawnRequest): Promise<TtyHandle> {
-      const route = classifyPath(request.cwd, undefined, deps.anchors())
-      if (route.kind === 'local') return await deps.localTty.spawn(request)
-      if (route.kind === 'ambiguous') {
-        throw new Error(
-          ambiguousPathMessage(route),
-        )
-      }
-      const channel = deps.channel(route.nodeId)
-      if (channel === undefined) throw new Error(`remote node "${route.nodeId}" is not connected`)
-      return await createRemoteTty(terminalWire(channel), { ...request, cwd: route.remotePath })
+      const remote = remoteTarget(request.cwd, deps.anchors(), deps.channel)
+      if (remote === undefined) return await deps.localTty.spawn(request)
+      return await createRemoteTty(terminalWire(remote.channel), { ...request, cwd: remote.remotePath })
     },
   }
 }

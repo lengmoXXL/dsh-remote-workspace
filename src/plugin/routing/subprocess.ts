@@ -40,8 +40,8 @@ import { asTermId } from '../../remote/protocol.ts'
 import type { ProcId, SpPipeFrame } from '../../remote/protocol.ts'
 import type { ChannelLookup, NodeChannel } from '../../remote/client.ts'
 import type { AnchorRoute } from '../../storage/anchors.ts'
-import { ambiguousPathMessage, classifyPath } from '../../models/routing.ts'
 import { terminalWire } from './tty.ts'
+import { remoteTarget } from './remote.ts'
 import type { TtySpawnRequest } from '../../tty.ts'
 import { createRemoteTty } from '../../remote/tty.ts'
 
@@ -400,27 +400,6 @@ export function createRoutingSubprocessRuntime(
 ): SubprocessRuntimeContract {
   const remoteRipgrep = deps.remoteRipgrep ?? 'rg'
 
-  /**
-   * The machine that owns one cwd, or undefined when this host does.
-   *
-   * A process and a terminal differ only in what they build once the machine is
-   * known, so both dispatch methods resolve the route through here.
-   */
-  const remoteRoute = (cwd: string) => {
-    const route = classifyPath(cwd, undefined, deps.anchors())
-    if (route.kind === 'local') return undefined
-    if (route.kind === 'ambiguous') {
-      throw new Error(
-        ambiguousPathMessage(route),
-      )
-    }
-    const channel = deps.channel(route.nodeId)
-    if (channel === undefined) {
-      throw new Error(`remote node "${route.nodeId}" is not connected`)
-    }
-    return { channel, remotePath: route.remotePath }
-  }
-
   return {
     // Executable lookup carries no working directory, so it cannot be routed:
     // a remote spawn resolves its own executable on the node instead.
@@ -429,7 +408,7 @@ export function createRoutingSubprocessRuntime(
     },
 
     spawn(spec: SubprocessSpawnSpec): SubprocessHandle {
-      const remote = remoteRoute(spec.cwd)
+      const remote = remoteTarget(spec.cwd, deps.anchors(), deps.channel)
       if (remote === undefined) return deps.localProc.spawn(spec)
       return createRemoteHandle(
         remote.channel,
@@ -439,7 +418,7 @@ export function createRoutingSubprocessRuntime(
     },
 
     async spawnTerminal(spec: SubprocessTerminalSpawnSpec): Promise<SubprocessTerminalHandle> {
-      const remote = remoteRoute(spec.cwd)
+      const remote = remoteTarget(spec.cwd, deps.anchors(), deps.channel)
       if (remote === undefined) return deps.localProc.spawnTerminal(spec)
       const request: TtySpawnRequest = {
         // A terminal always has a program to run; the subprocess request is the
