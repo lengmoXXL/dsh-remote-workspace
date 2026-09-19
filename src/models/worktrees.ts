@@ -42,14 +42,12 @@
 
 import { posix } from 'node:path'
 import type { WireWorktree } from '../remote/protocol.ts'
-import type { AnchorRecord, AnchorStore, DirectoryAnchor, WorktreeAnchor } from '../storage/anchors.ts'
-import type { RepoRecord, RepoStore } from '../storage/repos.ts'
+import type { AnchorId, AnchorRecord, AnchorStore, DirectoryAnchor, WorktreeAnchor } from '../storage/anchors.ts'
+import { asAnchorId } from '../storage/anchors.ts'
 import type { ChannelLookup } from '../remote/client.ts'
 import { NodeRequestError } from '../remote/client.ts'
-import type { AnchorId } from '../storage/anchors.ts'
-import { asAnchorId } from '../storage/anchors.ts'
 import { asNodeId, type NodeId } from '../storage/nodes.ts'
-import type { RepoRef } from '../storage/repos.ts'
+import type { RepoRecord, RepoRef, RepoStore } from '../storage/repos.ts'
 import {
   addWorktree,
   deleteBranch,
@@ -447,9 +445,7 @@ async function rowStatus(
   try {
     const open = await deps.workspace?.registered(anchor) ?? false
     const managed = await isManaged(deps, anchor)
-    return offlineError === undefined
-      ? { anchor, open, managed, held: true }
-      : { anchor, open, managed, held: true, error: offlineError }
+    return { anchor, open, managed, held: true, ...offlineError === undefined ? {} : { error: offlineError } }
   } catch (error) {
     return { anchor, open: false, managed: false, held: true, error: error instanceof Error ? error.message : String(error) }
   }
@@ -517,6 +513,14 @@ function requireWorktree(anchor: AnchorRecord): WorktreeAnchor {
     throw new Error(`"${anchor.name}" is the repository directory, not a worktree; close it instead`)
   }
   return anchor
+}
+
+/** The directory anchor one machine path is held under, if this host holds one. */
+function directoryAnchorOf(deps: WorktreeManagerDeps, ref: RepoRef): DirectoryAnchor | undefined {
+  return deps.anchors.list().find(
+    (anchor): anchor is DirectoryAnchor =>
+      anchor.kind === 'directory' && anchor.nodeId === ref.nodeId && anchor.repoPath === ref.repoPath,
+  )
 }
 
 /** One local row by the id a caller holds, or undefined when none carries it. */
@@ -890,9 +894,7 @@ export function createWorktreeManager(deps: WorktreeManagerDeps): WorktreeManage
       return statuses
     },
 
-    async existing(ref) {
-      return await listExisting(ref)
-    },
+    existing: listExisting,
 
     async adopt(ref, path) {
       if (deps.isLocalNode(ref.nodeId)) {
@@ -989,11 +991,7 @@ export function createWorktreeManager(deps: WorktreeManagerDeps): WorktreeManage
         if (record === undefined) throw new Error(`no repository record for "${ref.repoPath}"`)
         return await openAsWorkspace(deps, localDirectoryAnchor(record))
       }
-      const directoryAnchor = () => deps.anchors.list().find(
-        (anchor): anchor is DirectoryAnchor =>
-          anchor.kind === 'directory' && anchor.nodeId === ref.nodeId && anchor.repoPath === ref.repoPath,
-      )
-      const existing = directoryAnchor()
+      const existing = directoryAnchorOf(deps, ref)
       if (existing !== undefined) {
         await workspace.register(existing)
         return existing
@@ -1026,10 +1024,7 @@ export function createWorktreeManager(deps: WorktreeManagerDeps): WorktreeManage
         await unregisterWorkspace(deps, anchor)
         return anchor
       }
-      const anchor = deps.anchors.list().find(
-        (entry): entry is DirectoryAnchor =>
-          entry.kind === 'directory' && entry.nodeId === ref.nodeId && entry.repoPath === ref.repoPath,
-      )
+      const anchor = directoryAnchorOf(deps, ref)
       if (anchor === undefined) return undefined
       // The registration resolves by path, which stops resolving once the
       // anchor directory is gone, so it goes first.
