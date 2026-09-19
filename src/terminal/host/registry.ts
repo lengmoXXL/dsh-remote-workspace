@@ -352,7 +352,7 @@ export const KEY_NAMES: readonly string[] = Object.keys(KEYS)
 
 /**
  * Build the terminal registry.
- * @param options - the spawn seam, how to start a shell, and the machine lookup.
+ * @param options - what the registry needs to create a terminal.
  * @returns the registry the socket and the tool share.
  */
 export function createTerminalRegistry(options: TerminalRegistryOptions): TerminalRegistry {

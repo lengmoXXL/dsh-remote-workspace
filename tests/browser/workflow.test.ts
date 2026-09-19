@@ -73,17 +73,6 @@ function exact(...keys: Key[]): RegExp {
   return new RegExp(`^(?:${keys.flatMap(key => [zh[key], en[key]]).map(escape).join('|')})$`, 'i')
 }
 
-/**
- * A pattern matching the actions menu of one object.
- *
- * The trigger names the object it belongs to, which is what lets a case address
- * a row directly instead of counting buttons on the page.
- */
-function menuFor(name: string): RegExp {
-  const prefix = [zh.actions, en.actions].map(escape).join('|')
-  return new RegExp(`^(?:${prefix}): ${escape(name)}$`, 'i')
-}
-
 /** The accessible name one row's own control carries, which is the row-scoped action. */
 function controlFor(name: string, key: Key): RegExp {
   const prefix = [zh[key], en[key]].map(escape).join('|')
@@ -102,8 +91,8 @@ function present(...keys: Key[]): string {
  * @param name - the object whose row carries the menu.
  */
 async function openMenu(page: FirefoxPage, name: string): Promise<void> {
-  await waitForEnabled(page, menuFor(name), `the actions menu of ${name}`)
-  await clickByText(page, menuFor(name))
+  await waitForEnabled(page, controlFor(name, 'actions'), `the actions menu of ${name}`)
+  await clickByText(page, controlFor(name, 'actions'))
   await waitFor(page, `document.querySelector('[role="menu"]') !== null`, 'the menu to open')
 }
 
@@ -153,14 +142,6 @@ function controlsFor(...keys: Key[]): string {
 async function clickRowControl(page: FirefoxPage, name: string, key: Key): Promise<void> {
   await waitForEnabled(page, controlFor(name, key), `the ${key} control of ${name}`)
   await clickByText(page, controlFor(name, key))
-}
-
-/** An expression that holds when one row's own control is on screen. */
-function rowControlPresent(name: string, key: Key): string {
-  const pattern = controlFor(name, key).source
-  return `[...document.querySelectorAll('button')].some(button => `
-    + `new RegExp(${JSON.stringify(pattern)}, 'i')`
-    + `.test(button.getAttribute('aria-label') ?? button.title ?? ''))`
 }
 
 /**
@@ -704,7 +685,7 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     await waitForState(instance, 'ready')
     await clickByText(page, /e2e daemon/)
     await waitFor(page, present('status.ready'), 'the machine to report itself connected')
-    await waitForEnabled(page, menuFor('e2e daemon'), 'the machine actions menu to settle')
+    await waitForEnabled(page, controlFor('e2e daemon', 'actions'), 'the machine actions menu to settle')
     await shot('03-connected')
 
     // Register the fixture repository. The path field drives the picker while
@@ -760,10 +741,9 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     await clickInDialog(page, exact('create'))
     await waitForFormGone(page, exact('newWorktree'), 'the new-worktree form to close')
     await waitForText(page, 'verify', 'the worktree row')
-    // A checkout the plugin cut opens from its own row control and is deleted
-    // from the row's menu.
-    // Cutting a worktree opens its workspace, so the row offers closing it.
-    await waitFor(page, rowControlPresent('verify', 'closeWorktree'), 'the row to offer closing its workspace')
+    // Cutting a worktree opens its workspace, so the row offers closing it and
+    // the menu deletes the checkout.
+    await waitForEnabled(page, controlFor('verify', 'closeWorktree'), 'the row to offer closing its workspace')
     await waitForRowActions(page, 'verify', ['removeWorktree'])
     const anchor = join(
       instance.home, 'remote-worktrees', 'anchors', instance.nodeId, 'demo-repo', 'verify',
@@ -854,7 +834,7 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     await clickRowControl(page, 'hand-cut', 'openWorktree')
     await waitFor(page, `document.body.innerText.includes('hand-cut · demo-repo')`, 'the adopted workspace')
     // A checkout the plugin found is the operator's to remove as well.
-    await waitFor(page, rowControlPresent('hand-cut', 'closeWorktree'), 'the row to offer closing its workspace')
+    await waitForEnabled(page, controlFor('hand-cut', 'closeWorktree'), 'the row to offer closing its workspace')
     await waitForRowActions(page, 'hand-cut', ['removeWorktree'])
     await shot('07b-adopted-worktree')
 
@@ -873,8 +853,6 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     await clickInDialog(page, exact('create'))
     await waitForFormGone(page, exact('addRepository'), 'the add-repository form to close')
     await waitForText(page, 'plain-dir', 'the plain directory row')
-    // Both repository rows are on screen, and the plain directory is the one
-    // registered second.
     // Only the repository registered first can be cut from: the plain
     // directory's control is refused rather than hidden.
     assert.equal(
@@ -952,8 +930,6 @@ test('a remote worktree is created and removed through the browser', { timeout: 
       'the local repository reached the store',
     )
 
-    // The local machine leads the section, so its repository row is the first
-    // one on the page once it is open.
     await clickRowControl(page, 'local-repo', 'newWorktree')
     await waitForForm(page, exact('newWorktree'), 'the local new-worktree form')
     await fillDialogInputByPlaceholder(page, new RegExp(escape(en.placeholderWorktreeName)), 'here')

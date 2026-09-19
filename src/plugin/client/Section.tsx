@@ -207,8 +207,6 @@ interface Confirmation {
   readonly bodyKey: RemoteWorktreesKey
   /** Label of an opt-in the dialog offers, when the action has one. */
   readonly optionKey?: RemoteWorktreesKey
-  /** What the confirming button does; defaults to removing. */
-  readonly confirmKey?: RemoteWorktreesKey
   readonly run: (option: boolean) => Promise<void>
 }
 
@@ -276,7 +274,6 @@ interface RowAction {
   readonly label: ReactNode
   /** Destructive: the menu paints it as such. */
   readonly danger?: boolean
-  readonly disabled?: boolean
   readonly run: () => void
 }
 
@@ -308,7 +305,7 @@ function ActionsMenu({ name, busy, actions, t }: {
   t: T
 }) {
   const [open, setOpen] = useState(false)
-  const label = `${t('actions')}: ${name}`
+  const label = controlLabel(t, 'actions', name)
   return (
     <Menu
       open={open}
@@ -318,7 +315,7 @@ function ActionsMenu({ name, busy, actions, t }: {
       items={actions.map(action => ({
         id: action.id,
         label: action.label,
-        disabled: busy || action.disabled === true,
+        disabled: busy,
         ...action.danger === undefined ? {} : { danger: action.danger },
       }))}
       onSelect={(id) => {
@@ -364,6 +361,7 @@ function WorktreeRow({ entry, busy, onRemove, onToggleOpen, t }: {
   onToggleOpen: () => void
   t: T
 }) {
+  const openLabel = controlLabel(t, entry.open ? 'closeWorktree' : 'openWorktree', entry.anchor.name)
   return (
     <div className={css.worktree}>
       <IconBranchOutline16 />
@@ -382,8 +380,8 @@ function WorktreeRow({ entry, busy, onRemove, onToggleOpen, t }: {
           size="sm"
           icon={entry.open ? <IconFolderClose16 /> : <IconFolderOpenOutline16 />}
           disabled={busy}
-          aria-label={controlLabel(t, entry.open ? 'closeWorktree' : 'openWorktree', entry.anchor.name)}
-          title={controlLabel(t, entry.open ? 'closeWorktree' : 'openWorktree', entry.anchor.name)}
+          aria-label={openLabel}
+          title={openLabel}
           onClick={onToggleOpen}
         />
         <ActionsMenu
@@ -540,6 +538,12 @@ export function RemoteWorktreesSection(props: SectionProps) {
             const note = status?.error ?? (step === undefined
               ? t(here ? 'status.local' : badge.key)
               : t(step.key, step.params))
+            const connectLabel = controlLabel(
+              t,
+              state === 'ready' ? 'disconnect' : 'connect',
+              node.title,
+            )
+            const repositoryLabel = controlLabel(t, 'addRepository', node.title)
             return (
               <div key={node.nodeId} className={css.card}>
                 <DisclosureRow
@@ -568,8 +572,8 @@ export function RemoteWorktreesSection(props: SectionProps) {
                         size="sm"
                         icon={<IconProjectAddOutline16 />}
                         disabled={busy}
-                        aria-label={controlLabel(t, 'addRepository', node.title)}
-                        title={controlLabel(t, 'addRepository', node.title)}
+                        aria-label={repositoryLabel}
+                        title={repositoryLabel}
                         onClick={(event) => {
                           // The row below folds on a click, and this sits in it.
                           event.stopPropagation()
@@ -581,8 +585,8 @@ export function RemoteWorktreesSection(props: SectionProps) {
                           size="sm"
                           icon={state === 'ready' ? <IconCloseOutline16 /> : <IconLinkOutline16 />}
                           disabled={busy}
-                          aria-label={controlLabel(t, state === 'ready' ? 'disconnect' : 'connect', node.title)}
-                          title={controlLabel(t, state === 'ready' ? 'disconnect' : 'connect', node.title)}
+                          aria-label={connectLabel}
+                          title={connectLabel}
                           onClick={(event) => {
                             event.stopPropagation()
                             void mutate(() => (state === 'ready'
@@ -767,7 +771,7 @@ export function RemoteWorktreesSection(props: SectionProps) {
                   void mutate(() => pending.run(option))
                 }}
               >
-                {t(confirmation.confirmKey ?? 'remove')}
+                {t('remove')}
               </Button>
             </>
           )}
