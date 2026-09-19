@@ -455,6 +455,14 @@ export function createTerminalRegistry(options: TerminalRegistryOptions): Termin
     return entry
   }
 
+  /** Refuse a request on a terminal that has already exited. */
+  const requireLive = (entry: TerminalEntry): TerminalEntry => {
+    if (entry.state === 'exited') {
+      throw new TerminalRegistryError(`terminal "${entry.id}" has already exited`)
+    }
+    return entry
+  }
+
   const registry: TerminalRegistry = {
     async open(sessionId, cwd, size): Promise<TerminalEntry> {
       const handle = await options.spawn({
@@ -490,10 +498,7 @@ export function createTerminalRegistry(options: TerminalRegistryOptions): Termin
     },
 
     attach(id, sink): TerminalEntry {
-      const entry = entryOf(id)
-      if (entry.state === 'exited') {
-        throw new TerminalRegistryError(`terminal "${id}" has already exited`)
-      }
+      const entry = requireLive(entryOf(id))
       // A reattach ends any pending valve: the shell is watched again.
       if (entry.detachTimer !== undefined) {
         clearTimeout(entry.detachTimer)
@@ -531,10 +536,14 @@ export function createTerminalRegistry(options: TerminalRegistryOptions): Termin
 
     async resize(id, cols, rows): Promise<boolean> {
       const entry = entryOf(id)
-      entry.cols = cols
-      entry.rows = rows
-      // A refusal is not a failure: the browser is told the size is stale.
-      return await entry.handle.resize(cols, rows).then(() => true, () => false)
+      // A refusal is not a failure: the browser is told the size is stale, and
+      // the terminal keeps the geometry it actually has.
+      const accepted = await entry.handle.resize(cols, rows).then(() => true, () => false)
+      if (accepted) {
+        entry.cols = cols
+        entry.rows = rows
+      }
+      return accepted
     },
 
     listFor(sessionId): TerminalView[] {
@@ -564,10 +573,7 @@ export function createTerminalRegistry(options: TerminalRegistryOptions): Termin
             + (mine.length === 0 ? '; this session has no open terminal' : `; open terminals: ${describe(mine)}`),
           )
         }
-        if (entry.state === 'exited') {
-          throw new TerminalRegistryError(`terminal "${id}" has already exited`)
-        }
-        return entry
+        return requireLive(entry)
       }
       const live = mine.filter(entry => entry.state !== 'exited')
       if (live.length === 0) {
@@ -585,19 +591,13 @@ export function createTerminalRegistry(options: TerminalRegistryOptions): Termin
     },
 
     async write(id, text): Promise<number> {
-      const entry = entryOf(id)
-      if (entry.state === 'exited') {
-        throw new TerminalRegistryError(`terminal "${id}" has already exited`)
-      }
+      const entry = requireLive(entryOf(id))
       await entry.handle.write(text)
       return Buffer.byteLength(text, 'utf8')
     },
 
     async keys(id, names): Promise<{ bytes: number; keys: number }> {
-      const entry = entryOf(id)
-      if (entry.state === 'exited') {
-        throw new TerminalRegistryError(`terminal "${id}" has already exited`)
-      }
+      const entry = requireLive(entryOf(id))
       // Every name is resolved before any byte is written, so an unknown key
       // fails the whole call rather than delivering half a chord.
       const bytes = names.map((name) => {
