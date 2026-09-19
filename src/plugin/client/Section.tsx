@@ -13,7 +13,6 @@ import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } fr
 import {
   Button,
   IconBranchOutline16,
-  IconCloseOutline16,
   IconEllipsisOutline16,
   IconFolderClose16,
   IconFolderOpen16,
@@ -398,6 +397,7 @@ function WorktreeRow({ entry, busy, onRemove, onToggleOpen, t }: {
         {entry.error === undefined ? null : <span className={css.dim}>{entry.error}</span>}
       </span>
       <span className={css.actions}>
+        <span className={css.spacer} />
         <Button
           size="sm"
           icon={entry.open ? <IconFolderOpen16 /> : <IconFolderClose16 />}
@@ -568,11 +568,7 @@ export function RemoteWorktreesSection(props: SectionProps) {
             const reach = status?.localPort === undefined
               ? where
               : `${where} · ${t('forwarding', { port: status.localPort })}`
-            const connectLabel = controlLabel(
-              t,
-              state === 'ready' ? 'disconnect' : 'connect',
-              node.title,
-            )
+            const connectLabel = controlLabel(t, 'connect', node.title)
             const repositoryLabel = controlLabel(t, 'addRepository', node.title)
             return (
               <div key={node.nodeId} className={css.card}>
@@ -597,6 +593,19 @@ export function RemoteWorktreesSection(props: SectionProps) {
                   </button>
                   <span className={css.actions}>
                     {here || node.hasToken ? null : <Tag tone="warning">{t('noToken')}</Tag>}
+                    {/* A machine connects on its own; a button appears only while
+                        it is not up — and disconnecting lives in the menu, so a
+                        machine that is working stays out of the way. */}
+                    {here || state === 'ready' ? null : (
+                      <Button
+                        size="sm"
+                        icon={<IconLinkOutline16 />}
+                        disabled={busy}
+                        aria-label={connectLabel}
+                        title={connectLabel}
+                        onClick={() => { void mutate(() => props.connectNode(node.nodeId)) }}
+                      />
+                    )}
                     <Button
                       size="sm"
                       icon={<IconProjectAddOutline16 />}
@@ -605,37 +614,36 @@ export function RemoteWorktreesSection(props: SectionProps) {
                       title={repositoryLabel}
                       onClick={() => { setDialog({ kind: 'repo', nodeId: node.nodeId }) }}
                     />
-                    {here ? null : (
-                      <Button
-                        size="sm"
-                        icon={state === 'ready' ? <IconCloseOutline16 /> : <IconLinkOutline16 />}
-                        disabled={busy}
-                        aria-label={connectLabel}
-                        title={connectLabel}
-                        onClick={() => {
-                          void mutate(() => (state === 'ready'
-                            ? props.disconnectNode(node.nodeId)
-                            : props.connectNode(node.nodeId)))
-                        }}
-                      />
-                    )}
-                    {here ? null : (
-                      <ActionsMenu
-                        name={node.title}
-                        busy={busy}
-                        t={t}
-                        actions={[{
-                          id: 'removeMachine',
-                          label: t('removeMachine'),
-                          danger: true,
-                          run: () => confirm({
-                            titleKey: 'removeMachineTitle',
-                            bodyKey: 'removeMachineBody',
-                            run: () => props.removeNode(node.nodeId),
-                          }),
-                        }]}
-                      />
-                    )}
+                    {/* This host has no connection to break and nothing to
+                        remove, so it holds the menu's column open instead. */}
+                    {here
+                      ? <span className={css.spacer} />
+                      : (
+                        <ActionsMenu
+                          name={node.title}
+                          busy={busy}
+                          t={t}
+                          actions={[
+                            ...state === 'ready'
+                              ? [{
+                                id: 'disconnect',
+                                label: t('disconnect'),
+                                run: () => { void mutate(() => props.disconnectNode(node.nodeId)) },
+                              }]
+                              : [],
+                            {
+                              id: 'removeMachine',
+                              label: t('removeMachine'),
+                              danger: true,
+                              run: () => confirm({
+                                titleKey: 'removeMachineTitle',
+                                bodyKey: 'removeMachineBody',
+                                run: () => props.removeNode(node.nodeId),
+                              }),
+                            },
+                          ]}
+                        />
+                      )}
                   </span>
                 </div>
                 {step === undefined ? null : (
@@ -685,6 +693,14 @@ export function RemoteWorktreesSection(props: SectionProps) {
                               <span className={css.actions}>
                                 <Button
                                   size="sm"
+                                  icon={<IconBranchOutline16 />}
+                                  disabled={busy || !entry.git}
+                                  aria-label={worktreeLabel}
+                                  title={worktreeLabel}
+                                  onClick={() => setDialog({ kind: 'worktree', repo })}
+                                />
+                                <Button
+                                  size="sm"
                                   icon={directory?.open === true
                                     ? <IconFolderOpen16 />
                                     : <IconFolderClose16 />}
@@ -696,14 +712,6 @@ export function RemoteWorktreesSection(props: SectionProps) {
                                       ? props.closeDirectory(repo.repoId)
                                       : props.openDirectory(repo.repoId)
                                   ))}
-                                />
-                                <Button
-                                  size="sm"
-                                  icon={<IconBranchOutline16 />}
-                                  disabled={busy || !entry.git}
-                                  aria-label={worktreeLabel}
-                                  title={worktreeLabel}
-                                  onClick={() => setDialog({ kind: 'worktree', repo })}
                                 />
                                 <ActionsMenu
                                   name={repo.name}
@@ -799,7 +807,7 @@ export function RemoteWorktreesSection(props: SectionProps) {
             <>
               <Button onClick={() => setConfirmation(undefined)}>{t('cancel')}</Button>
               <Button
-                variant="primary"
+                className={css.danger!}
                 disabled={busy}
                 onClick={() => {
                   const pending = confirmation

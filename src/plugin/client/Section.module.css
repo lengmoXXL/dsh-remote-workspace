@@ -103,6 +103,9 @@
   text-overflow: ellipsis;
 }
 .actions { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+/* Keeps one control's column off the next row's: a worktree offers one control
+   fewer than its repository, and the menu beyond this gap lines up with it. */
+.spacer { display: block; width: 28px; height: 28px; }
 
 /* A connect reports the step it is on, in the colour of work in flight. */
 .progress {
@@ -232,6 +235,17 @@
 .pickerItem + .pickerItem { border-top: 1px solid var(--dsw-alias-border-l1); }
 .pickerItem:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .pickerEmpty { padding: 14px 10px; color: var(--dsw-alias-label-tertiary); font-size: 12px; }
+/* The confirming dialog's own action: the prototype fills a destructive one
+   with the error colour, and the label on that fill is the token the shell uses
+   for text on a filled button. */
+.danger:not(:disabled) {
+  background: var(--dsw-alias-state-error-primary);
+  color: var(--dsw-alias-label-primary-foreground);
+}
+.danger:hover:not(:disabled) {
+  background: var(--dsw-alias-state-error-primary);
+}
+
 /* The confirming dialog's body: what the action does, before it is taken. */
 .subtitle {
   margin: 0;

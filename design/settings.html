@@ -159,10 +159,10 @@ function cardHtml(m){
   h.push('<div class="grow"><div class="m-title"><b>' + esc(m.title) + "</b>" + statusPill(m.status) + "</div>");
   h.push('<div class="m-meta">' + esc(m.meta) + "</div></div>");
   h.push('<div class="actions">');
+  if (m.kind !== "local" && m.status !== "ready") h.push(ib("conn", ICON.plug, "连接"));
   h.push(ib("addRepo", ICON.folderPlus, "添加仓库", "", 'data-id="' + esc(m.id) + '"'));
-  if (m.kind !== "local") h.push(ib("conn", m.status === "ready" ? ICON.unplug : ICON.plug, m.status === "ready" ? "断开" : "连接"));
-  else h.push('<span class="spacer"></span>');
-  h.push(ib("menu", ICON.more, "更多", "rt"));
+  if (m.kind === "local") h.push('<span class="spacer"></span>');
+  else h.push(ib("menu", ICON.more, "更多", "rt"));
   h.push("</div></div>");
   if (m.status === "connecting") h.push('<div class="progress"><div class="row"><span>' + esc(m.progressText || "检查远端环境…") + "</span><span>" + m.progress + '%</span></div><div class="track"><i style="width:' + m.progress + '%"></i></div></div>');
   h.push('<div class="card-body">' + reposHtml(m) + "</div></div>");
@@ -174,8 +174,8 @@ function repoHtml(m, r){
   h.push('<div class="r-ico">' + (r.git ? ICON.repo : ICON.folder) + "</div>");
   h.push('<div class="grow"><div class="r-name">' + esc(r.name) + '</div><div class="r-path">' + esc(r.path) + "</div></div>");
   h.push('<div class="actions">');
-  h.push(ib(r.open ? "closeRepo" : "openRepo", r.open ? ICON.folderIn : ICON.folderOut, r.open ? "关闭工作区" : "打开工作区", "", 'data-repo="' + esc(r.name) + '"'));
   h.push(r.git ? ib("newWorktree", ICON.branch, "新建 worktree", "", 'data-repo="' + esc(r.name) + '"') : ib("noop", ICON.branch, "新建 worktree", "", 'data-repo="' + esc(r.name) + '" disabled'));
+  h.push(ib(r.open ? "closeRepo" : "openRepo", r.open ? ICON.folderIn : ICON.folderOut, r.open ? "关闭工作区" : "打开工作区", "", 'data-repo="' + esc(r.name) + '"'));
   h.push(ib("repoMenu", ICON.more, "更多", "rt", 'data-repo="' + esc(r.name) + '"'));
   h.push("</div></div>");
   if (r.git) h.push(r.worktrees.map(function(w){ return wtHtml(r, w); }).join(""));
@@ -186,8 +186,8 @@ function wtHtml(r, w){
   h.push('<div class="grow"><b>' + esc(w.name) + "</b> " + '<span class="tag branch">' + esc(w.branch) + "</span> ");
   h.push('<span class="r-path">' + esc(w.path) + "</span></div>");
   h.push('<div class="actions">');
-  h.push(ib(w.open ? "closeWt" : "openWt", w.open ? ICON.folderIn : ICON.folderOut, w.open ? "关闭工作区" : "打开工作区", "", 'data-repo="' + esc(r.name) + '" data-wt="' + esc(w.name) + '"'));
   h.push('<span class="spacer"></span>');
+  h.push(ib(w.open ? "closeWt" : "openWt", w.open ? ICON.folderIn : ICON.folderOut, w.open ? "关闭工作区" : "打开工作区", "", 'data-repo="' + esc(r.name) + '" data-wt="' + esc(w.name) + '"'));
   h.push(ib("wtMenu", ICON.more, "更多", "rt", 'data-repo="' + esc(r.name) + '" data-wt="' + esc(w.name) + '"'));
   h.push("</div></div>");
   return h.join("");
@@ -286,10 +286,10 @@ byId("machines").addEventListener("click", function(e){
   var btn = e.target.closest("[data-act]"); var act = btn ? btn.getAttribute("data-act") : null;
   if (act === "refresh" || act === "noop") return;
   if (act === "addRepo"){ repoDialog(m); return; }
-  if (act === "menu"){ openMenu(btn, [
-    { label: m.status === "ready" ? "断开" : "连接", run: function(){ if (m.status === "ready") { m.status = "disconnected"; render(); toast("已断开 " + m.title); } else connectMachine(m); } },
-    { label: "移除机器", danger: true, run: function(){ dialog({ title: "移除机器？", lead: "这台机器的仓库登记会一起删除，机器上的 worktree 与分支不受影响。", okText: "移除", danger: true, onOk: function(){ state.machines = state.machines.filter(function(x){ return x !== m; }); render(); toast("已移除机器 " + m.title); } }); } } ]); return; }
-  if (act === "conn"){ if (m.status === "ready") { m.status = "disconnected"; render(); toast("已断开 " + m.title); } else connectMachine(m); return; }
+  if (act === "menu"){ var items = [];
+    if (m.status === "ready") items.push({ label: "断开", run: function(){ m.status = "disconnected"; render(); toast("已断开 " + m.title); } });
+    items.push({ label: "移除机器", danger: true, run: function(){ dialog({ title: "移除机器？", lead: "这台机器的仓库登记会一起删除，机器上的 worktree 与分支不受影响。", okText: "移除", danger: true, onOk: function(){ state.machines = state.machines.filter(function(x){ return x !== m; }); render(); toast("已移除机器 " + m.title); } }); } }); openMenu(btn, items); return; }
+  if (act === "conn"){ connectMachine(m); return; }
   if (act === "repoMenu"){ var r = findRepo(m, btn.dataset.repo); if (!r) return; openMenu(btn, [ { label: "移除仓库登记", danger: true, run: function(){ dialog({ title: "移除仓库登记？", lead: "只会删除本地登记，并关闭它的目录工作区；机器上的文件和 worktree 都不受影响。", okText: "移除", danger: true, onOk: function(){ m.repos = m.repos.filter(function(x){ return x !== r; }); render(); toast("已移除仓库登记 " + r.name); } }); } } ]); return; }
   if (act === "newWorktree"){ var repo = findRepo(m, btn.dataset.repo); if (!repo || !repo.git) return; dialog({ title: "新建 worktree", lead: "从 " + repo.name + " 切出一个新的检出。", fields: [ { key: "name", label: "worktree 名称", placeholder: "feature-x", hint: "分支名会变成 worktree/<名称>，名称不可重复。" }, { key: "path", label: "检出目录", placeholder: repo.path + "/feature-x", hint: "留空则使用默认路径。" } ], okText: "创建", onOk: function(v){ if (!v.name) return; repo.worktrees.push({ name: v.name, branch: "worktree/" + v.name, path: v.path || (repo.path.replace(/\/$/, "") + "/" + v.name), adopted: false, open: false }); render(); toast("已创建 worktree " + v.name); } }); return; }
   if (act === "openRepo" || act === "closeRepo"){ var rp = findRepo(m, btn.dataset.repo); if (rp) { rp.open = act === "openRepo"; render(); toast((rp.open ? "已打开" : "已关闭") + "工作区 " + rp.name); } return; }
