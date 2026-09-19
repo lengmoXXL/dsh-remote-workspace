@@ -42,7 +42,7 @@ function fakeTerminal(): FakeTerminal {
   const done = new Promise<TtyOutcome>((resolve) => { resolveOutcome = resolve })
   return {
     writes,
-    emit: (chunk) => { output.write(Buffer.from(chunk, 'utf8')) },
+    emit: chunk => output.write(Buffer.from(chunk, 'utf8')),
     exit: () => resolveOutcome({ exitCode: 0, signal: null }),
     handle: {
       pid: 4242,
@@ -107,6 +107,14 @@ function renderText(definition: ToolDefinition, args: Record<string, unknown>, v
 /** Let an action's synchronous setup run before a case drives the seam. */
 const settle = (): Promise<void> => new Promise(resolve => setImmediate(resolve))
 
+/** The raw per-property schema a definition carries for the model. */
+function toolSchema(definition: ToolDefinition): Record<string, { enum?: readonly string[] }> {
+  const parameters = (definition as unknown as {
+    parameters: { properties: Record<string, { enum?: readonly string[] }> }
+  }).parameters
+  return parameters.properties
+}
+
 test('the catalog holds exactly one terminal tool, with no per-action siblings', () => {
   const { tools } = compose()
   assert.deepEqual(tools.map(tool => tool.name), ['terminal'])
@@ -116,14 +124,6 @@ test('the catalog holds exactly one terminal tool, with no per-action siblings',
   const parameters = toolSchema(soleTool(tools))
   assert.deepEqual(parameters['action']?.enum, ['list', 'read', 'send', 'keys', 'wait'])
 })
-
-/** The raw per-property schema a definition carries for the model. */
-function toolSchema(definition: ToolDefinition): Record<string, { enum?: readonly string[] }> {
-  const parameters = (definition as unknown as {
-    parameters: { properties: Record<string, { enum?: readonly string[] }> }
-  }).parameters
-  return parameters.properties
-}
 
 test('list reports the calling Session’s terminals and needs no terminal argument', async () => {
   const { tools, registry, exec } = compose()
@@ -313,7 +313,7 @@ test('send then an offset-less wait matches output that already arrived, and ren
   assert.equal(value.reason, 'match')
   assert.equal(
     renderText(tool, args, value),
-    `[t1 match offset ${String(value.offset)}]\necho hello world\r\nhello world\r\n`,
+    `[t1 match offset ${value.offset}]\necho hello world\r\nhello world\r\n`,
   )
 })
 
