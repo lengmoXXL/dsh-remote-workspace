@@ -80,7 +80,7 @@ export const en = {
   'picker.description': 'Attach to a terminal that is already running, or open a new one.',
   'picker.empty': 'No terminals in this session yet.',
   'picker.new': 'New terminal',
-  'picker.opened': 'Open in another tab',
+  'picker.opened': 'Already open',
   'picker.close': 'Close terminal {label}',
 
   'note.fixedSize': 'Terminals on this machine cannot be resized',

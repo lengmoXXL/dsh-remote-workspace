@@ -2,7 +2,7 @@
  * Bilingual copy for the Remote workspaces settings section.
  *
  * The Chinese dictionary is the key source; the English one is checked against
- * its key set, so a key added to one without the other fails the build. The
+ * its key set, so a key added to one without the other fails the type check. The
  * section receives `t` through the standard locale seat, which the shell
  * derives from the namespace registered in {@link NS}.
  *
