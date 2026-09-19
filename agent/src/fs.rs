@@ -184,12 +184,7 @@ impl FsBackend {
         }
         // One byte past the cap detects growth after the stat without buffering
         // an unbounded amount of content.
-        let bytes = read_window(
-            verb,
-            &target,
-            0,
-            size.saturating_add(1).min(max_bytes.saturating_add(1)) as usize,
-        )?;
+        let bytes = read_window(verb, &target, 0, size.saturating_add(1) as usize)?;
         if bytes.len() as u64 > max_bytes {
             return Err(too_large(
                 verb,
