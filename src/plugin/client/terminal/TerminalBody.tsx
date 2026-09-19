@@ -88,8 +88,7 @@ export function TerminalBody(
     )
   }
 
-  // A shell that exited or never opened has nothing left to end and offers a
-  // restart instead.
+  // A shell that exited or never opened can only be started again.
   const gone = state.kind === 'ended' || state.kind === 'failed' || state.kind === 'closed'
   return (
     <div className={css.pane} data-terminal-session={sessionId}>

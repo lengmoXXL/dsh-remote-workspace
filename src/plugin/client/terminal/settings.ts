@@ -100,7 +100,7 @@ export function fontStack(family: string): string {
 /** The durable scope, once the settings service is composed. */
 let scope: SettingsScope<TerminalDisplaySettings> | undefined
 
-/** The preferences in force right now. */
+/** The snapshot every reader holds until a preference moves. */
 let cached: TerminalDisplaySettings = { ...TERMINAL_DISPLAY_DEFAULTS }
 
 const listeners = new Set<() => void>()

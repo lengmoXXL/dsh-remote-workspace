@@ -13,9 +13,8 @@
  * reattaches to it. Because the shell restores no tab across a reload, that id
  * is also written to `localStorage` per Session: the chooser lists the shell
  * this page last used first, so coming back to it is one click. Ending a shell
- * is explicit and is the only thing that forgets the id: the chooser's close
- * reaches the host route, and a shell that exits or fails to attach has nothing
- * left to come back to.
+ * is explicit — the chooser's close reaches the host route — and a shell that
+ * exits or fails to attach leaves nothing to come back to.
  *
  * Which shell a tab shows is decided before its first terminal exists: a tab
  * whose person has not chosen yet is shown the chooser, and {@link chooseTerminal}
