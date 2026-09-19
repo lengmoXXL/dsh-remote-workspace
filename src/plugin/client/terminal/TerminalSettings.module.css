@@ -13,7 +13,9 @@
   border: 0.5px solid var(--dsw-alias-border-l4);
   border-radius: 16px;
   background: var(--dsw-alias-bg-layer-3);
-  transition: border-color .16s, background .16s;
+  /* Only the open state eases its fill; a hover border answers the pointer at
+     once, the way the prototype's rows do. */
+  transition: background .16s;
 }
 .card:hover { border-color: var(--dsw-alias-label-dimmed); }
 
