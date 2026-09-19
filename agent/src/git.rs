@@ -390,10 +390,7 @@ fn classify_add(repo: &Path, target: &Path, branch: &str, outcome: &GitOutcome) 
 
 /// Read back the worktree a successful `worktree add` created.
 async fn describe_worktree(path: &Path) -> Result<Value> {
-    let head = run(path, &["rev-parse", "HEAD"]).await;
-    if !head.ok {
-        return Err(command_failed(path, &head));
-    }
+    let head = head_of(path).await?;
     let branch = run(path, &["rev-parse", "--abbrev-ref", "HEAD"]).await;
     if !branch.ok {
         return Err(command_failed(path, &branch));
@@ -401,7 +398,7 @@ async fn describe_worktree(path: &Path) -> Result<Value> {
     Ok(json!({
         "path": path.to_string_lossy(),
         "branch": short_branch(branch.stdout.trim()),
-        "head": head.stdout.trim(),
+        "head": head,
         "main": false,
     }))
 }
