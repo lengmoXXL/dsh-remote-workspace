@@ -18,13 +18,9 @@ import {
   Input,
   Modal,
 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { reasonOf } from './api.ts'
 import type { DirListing, NodeId, RepoId, RepoRecord, T } from './Section.tsx'
 import css from './Section.module.css'
-
-/** The message a failure carries, or a readable fallback. */
-export function reasonOf(failure: unknown): string {
-  return failure instanceof Error ? failure.message : String(failure)
-}
 
 /** A labelled form field. */
 function Field({ label, hint, children }: {

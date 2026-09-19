@@ -25,6 +25,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Button, IconCloseOutline16, IconWarningOutline16, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
+import { reasonOf } from '../api.ts'
 import type { TerminalKey } from './locales.ts'
 import { lastTerminal, terminalTab, type TerminalTarget } from './session.ts'
 import css from './TerminalPicker.module.css'
@@ -46,11 +47,6 @@ function stateKey(state: TerminalSummary['state']): TerminalKey {
   if (state === 'running') return 'state.running'
   if (state === 'detached') return 'state.detached'
   return 'state.exited'
-}
-
-/** The message a failure carries, or a readable fallback. */
-function reasonOf(failure: unknown): string {
-  return failure instanceof Error ? failure.message : String(failure)
 }
 
 /** What the chooser is driven with. */

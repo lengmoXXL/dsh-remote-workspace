@@ -12,6 +12,15 @@
 const API = '/dsh-remote-workspace'
 
 /**
+ * The message a failure carries, for copy that shows it.
+ * @param failure - whatever a rejected call threw.
+ * @returns the failure's own message, or its text for a throw that is not an error.
+ */
+export function reasonOf(failure: unknown): string {
+  return failure instanceof Error ? failure.message : String(failure)
+}
+
+/**
  * One JSON request against the management API.
  * @param failure - renders the copy for a status the host did not describe.
  * @param path - the route below the plugin's prefix.

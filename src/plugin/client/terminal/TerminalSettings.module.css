@@ -1,10 +1,6 @@
 /*
  * Styles for the terminal's display settings card.
  *
- * Class names are local: the client bundle inlines this stylesheet through the
- * build's CSS Modules plugin, which hashes every selector and hands the
- * component the resulting map. Nothing here is global.
- *
  * The card chrome repeats the geometry of the page's other plugin cards,
  * because the shared card component belongs to the shell's package and a client
  * bundle reaches no package it does not share through the loader. Every value

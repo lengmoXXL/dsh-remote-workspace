@@ -34,7 +34,8 @@ import {
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteWorktreesKey } from './locales.ts'
 import { NS } from './locales.ts'
-import { AddMachineDialog, AddRepoDialog, NewWorktreeDialog, reasonOf } from './dialogs.tsx'
+import { reasonOf } from './api.ts'
+import { AddMachineDialog, AddRepoDialog, NewWorktreeDialog } from './dialogs.tsx'
 import css from './Section.module.css'
 
 /** The locale seat this section reads, including its template parameters. */
