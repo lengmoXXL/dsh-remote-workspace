@@ -36,8 +36,6 @@ import { LocalBashExecutor } from '@deepseek-ai/dsh-bash-local'
 import { SandboxBashExecutor } from '@deepseek-ai/dsh-bash-sandbox'
 import { SandboxedFileSystem } from '@deepseek-ai/dsh-fs-sandbox'
 import { LocalSubprocessRuntime } from '@deepseek-ai/dsh-subprocess-local'
-import { LocalTtyRuntime } from './local/tty.ts'
-import { DEFAULT_TTY_GRACE_MS } from './tty.ts'
 import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
 // Type-only: the settings service merge (ctx.settings) the display namespace is
 // registered through.
@@ -45,6 +43,8 @@ import type {} from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import { homedir } from 'node:os'
 import { join, posix } from 'node:path'
+import { LocalTtyRuntime } from './local/tty.ts'
+import { DEFAULT_TTY_GRACE_MS } from './tty.ts'
 import { autoconnect } from './models/autoconnect.ts'
 import { createNodeConnections, DEFAULT_HANDSHAKE_TIMEOUT_MS } from './models/machines.ts'
 import { classifyPath } from './models/routing.ts'
@@ -370,7 +370,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   }
 
   // One directory answers two questions — which machine serves it, and where a
-  // shell in it lands — so the route that answers both is read once.
+  // shell in it lands — so one helper answers both.
   const routeOf = (cwd: string) => classifyPath(cwd, undefined, anchorStore.routes())
   // The registry is the one handle on the shells a person's tabs have open: the
   // socket registers through it, the model-facing tool addresses it, and each
@@ -390,7 +390,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       // anchor claims runs locally.
       const route = routeOf(cwd)
       const nodeId = route.kind === 'remote' ? route.nodeId : LOCAL_NODE_ID
-      return { label: registry.get(nodeId as NodeId)?.title ?? nodeId }
+      return { label: registry.get(nodeId)?.title ?? nodeId }
     },
     directory: (cwd) => {
       // The same route decides where a shell really lands: one in a routed
