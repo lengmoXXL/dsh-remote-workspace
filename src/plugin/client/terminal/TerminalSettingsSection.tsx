@@ -9,13 +9,13 @@
  * @module dsh-remote-workspace/plugin/client/terminal/TerminalSettingsSection
  */
 
-import { useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { Button, IconChevronDownOutline14, Menu, Switch } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { TerminalNamespace } from './locales.ts'
 import {
-  TERMINAL_FONTS,
   TERMINAL_STEPS,
+  monospaceFonts,
   subscribeTerminalDisplaySettings,
   terminalDisplaySettings,
   writeTerminalDisplaySettings,
@@ -43,6 +43,13 @@ const STEPS: readonly StepRow[] = [
 export function TerminalSettingsSection({ t }: PropsLocale<TerminalNamespace>): ReactNode {
   const settings = useSyncExternalStore(subscribeTerminalDisplaySettings, terminalDisplaySettings)
   const [fontOpen, setFontOpen] = useState(false)
+  const [fonts, setFonts] = useState<readonly string[] | undefined>(undefined)
+
+  /** Read this machine's fonts; the ask is answered while the page is open. */
+  const readFonts = (): void => {
+    void monospaceFonts().then(setFonts)
+  }
+  useEffect(readFonts, [])
 
   /** Move one preference by a step, held inside the bounds its row documents. */
   const bump = (key: StepRow['key'], direction: number): void => {
@@ -66,12 +73,11 @@ export function TerminalSettingsSection({ t }: PropsLocale<TerminalNamespace>): 
           <Menu
             open={fontOpen}
             compact
-            selectedId={settings.font.name}
-            items={TERMINAL_FONTS.map(entry => ({ id: entry.name, label: entry.name }))}
-            onSelect={(id) => {
+            selectedId={settings.fontFamily}
+            items={(fonts ?? [settings.fontFamily]).map(family => ({ id: family, label: family }))}
+            onSelect={(family) => {
               setFontOpen(false)
-              const chosen = TERMINAL_FONTS.find(entry => entry.name === id)
-              if (chosen !== undefined) writeTerminalDisplaySettings({ font: chosen })
+              writeTerminalDisplaySettings({ fontFamily: family })
             }}
             onClose={() => { setFontOpen(false) }}
             anchor={(
@@ -79,9 +85,13 @@ export function TerminalSettingsSection({ t }: PropsLocale<TerminalNamespace>): 
                 size="sm"
                 aria-label={t('settings.font')}
                 title={t('settings.font')}
-                onClick={() => { setFontOpen(current => !current) }}
+                onClick={() => {
+                  setFontOpen(current => !current)
+                  // The list is behind a permission, and the ask needs a gesture.
+                  readFonts()
+                }}
               >
-                {settings.font.name}
+                {settings.fontFamily}
                 <IconChevronDownOutline14 />
               </Button>
             )}

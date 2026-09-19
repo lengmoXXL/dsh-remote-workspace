@@ -9,34 +9,82 @@
  * @module dsh-remote-workspace/plugin/client/terminal/settings
  */
 
-/** One monospace family a terminal may be drawn in. */
-export interface TerminalFont {
-  /** The family list the terminal is created with. */
-  readonly stack: string
-  /** The name a settings row offers; a font's name is not translated. */
-  readonly name: string
+/** One family the browser reports from this machine's font list. */
+interface LocalFontData {
+  readonly family: string
 }
 
-/** The family a terminal is drawn in until someone chooses another. */
-export const DEFAULT_TERMINAL_FONT: TerminalFont = {
-  name: 'SF Mono',
-  stack: "'SF Mono', Menlo, 'DejaVu Sans Mono', 'Cascadia Mono', Consolas, 'Liberation Mono', monospace",
+/** The font list a browser exposes; only some of them expose one. */
+interface LocalFontWindow {
+  queryLocalFonts?: () => Promise<readonly LocalFontData[]>
 }
 
-/** The families a person may choose between, the default first. */
-export const TERMINAL_FONTS: readonly TerminalFont[] = [
-  DEFAULT_TERMINAL_FONT,
-  { name: 'JetBrains Mono', stack: "'JetBrains Mono', 'SF Mono', Menlo, monospace" },
-  { name: 'Fira Code', stack: "'Fira Code', 'SF Mono', Menlo, monospace" },
-  { name: 'Menlo', stack: "Menlo, 'DejaVu Sans Mono', monospace" },
-  { name: 'Cascadia Mono', stack: "'Cascadia Mono', Consolas, monospace" },
-  { name: 'Consolas', stack: "Consolas, 'Liberation Mono', monospace" },
-]
+/** The family every browser has, and the one a terminal falls back to. */
+const GENERIC_FAMILY = 'monospace'
+
+/**
+ * Whether one family is monospace.
+ *
+ * The machine names its fonts but does not describe them, so the family is
+ * measured: every character of a monospace family takes the same advance.
+ * @param context - the canvas to measure with.
+ * @param family - the family to measure.
+ * @returns whether the family is monospace.
+ */
+function isMonospace(context: CanvasRenderingContext2D, family: string): boolean {
+  const advance = (glyphs: string): number => {
+    context.font = `72px "${family}", monospace`
+    return context.measureText(glyphs).width
+  }
+  return advance('iiiiiiiiii') === advance('WWWWWWWWWW')
+}
+
+/**
+ * Every monospace family this machine has, or undefined when it will not say.
+ *
+ * The list sits behind a permission, which is asked for from a gesture: a
+ * refusal is reported rather than remembered, so the next open asks again.
+ * @returns the family names, or undefined when the browser has none to give.
+ */
+async function readFamilies(): Promise<readonly string[] | undefined> {
+  const query = (window as LocalFontWindow).queryLocalFonts
+  const context = document.createElement('canvas').getContext('2d')
+  if (query === undefined || context === null) return undefined
+  try {
+    const fonts = await query.call(window)
+    return [...new Set(fonts.map(font => font.family))]
+      .filter(family => isMonospace(context, family))
+      .sort((left, right) => left.localeCompare(right))
+  } catch {
+    return undefined
+  }
+}
+
+let reading: Promise<readonly string[] | undefined> | undefined
+
+/** The monospace families this machine has, the generic one last. */
+export async function monospaceFonts(): Promise<readonly string[]> {
+  const families = await (reading ??= readFamilies())
+  if (families === undefined) {
+    reading = undefined
+    return [GENERIC_FAMILY]
+  }
+  return [...families, GENERIC_FAMILY]
+}
+
+/**
+ * The CSS family list one chosen family is drawn with.
+ * @param family - a family this machine offers.
+ * @returns the list a terminal is created with.
+ */
+export function fontStack(family: string): string {
+  return family === GENERIC_FAMILY ? family : `"${family}", monospace`
+}
 
 /** What one terminal is drawn with. */
 export interface TerminalDisplaySettings {
-  /** The family a terminal is drawn in, one of {@link TERMINAL_FONTS}. */
-  readonly font: TerminalFont
+  /** The family a terminal is drawn in, by name; one of {@link monospaceFonts}. */
+  readonly fontFamily: string
   /** Cell height in pixels. */
   readonly fontSize: number
   /** Line box as a multiple of the font size. */
@@ -47,9 +95,13 @@ export interface TerminalDisplaySettings {
   readonly scrollback: number
 }
 
-/** The settings a terminal starts with. */
-export const TERMINAL_DEFAULTS: TerminalDisplaySettings = {
-  font: DEFAULT_TERMINAL_FONT,
+/**
+ * The settings a terminal starts with.
+ *
+ * The family is separate: nothing chosen yet means the generic one, which every
+ * machine has, until the list this machine offers is read.
+ */
+const DEFAULTS = {
   fontSize: 12,
   lineHeight: 1.2,
   cursorBlink: true,
@@ -91,13 +143,13 @@ function read(): TerminalDisplaySettings {
     // Storage can be unavailable, or hold a value another build wrote; the
     // defaults are a working terminal either way.
   }
-  const known = TERMINAL_FONTS.find(font => font.name === stored.font?.name)
+  const family = stored.fontFamily
   return {
-    font: known ?? DEFAULT_TERMINAL_FONT,
-    fontSize: clampNumber(stored.fontSize, TERMINAL_STEPS.fontSize, TERMINAL_DEFAULTS.fontSize),
-    lineHeight: clampNumber(stored.lineHeight, TERMINAL_STEPS.lineHeight, TERMINAL_DEFAULTS.lineHeight),
-    cursorBlink: typeof stored.cursorBlink === 'boolean' ? stored.cursorBlink : TERMINAL_DEFAULTS.cursorBlink,
-    scrollback: clampNumber(stored.scrollback, TERMINAL_STEPS.scrollback, TERMINAL_DEFAULTS.scrollback),
+    fontFamily: typeof family === 'string' && family !== '' ? family : GENERIC_FAMILY,
+    fontSize: clampNumber(stored.fontSize, TERMINAL_STEPS.fontSize, DEFAULTS.fontSize),
+    lineHeight: clampNumber(stored.lineHeight, TERMINAL_STEPS.lineHeight, DEFAULTS.lineHeight),
+    cursorBlink: typeof stored.cursorBlink === 'boolean' ? stored.cursorBlink : DEFAULTS.cursorBlink,
+    scrollback: clampNumber(stored.scrollback, TERMINAL_STEPS.scrollback, DEFAULTS.scrollback),
   }
 }
 

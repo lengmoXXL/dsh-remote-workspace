@@ -33,7 +33,7 @@ import { Terminal, type ITheme } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 import type { ClientFrame, HostFrame } from '../../../terminal/shared/wire.ts'
 import { SOCKET_PATH } from '../../../terminal/shared/wire.ts'
-import { terminalDisplaySettings } from './settings.ts'
+import { fontStack, terminalDisplaySettings } from './settings.ts'
 import css from './TerminalSurface.module.css'
 
 /** What the status line reports about one terminal. */
@@ -325,7 +325,7 @@ function create(mount: TerminalMount): Entry {
   const display = terminalDisplaySettings()
   const term = new Terminal({
     cursorBlink: display.cursorBlink,
-    fontFamily: display.font.stack,
+    fontFamily: fontStack(display.fontFamily),
     fontSize: display.fontSize,
     lineHeight: display.lineHeight,
     scrollback: display.scrollback,
@@ -571,7 +571,7 @@ export function terminalState(sessionId: string, tabId: string): TerminalState {
 export function applyTerminalDisplaySettings(): void {
   const display = terminalDisplaySettings()
   for (const entry of entries.values()) {
-    entry.term.options.fontFamily = display.font.stack
+    entry.term.options.fontFamily = fontStack(display.fontFamily)
     entry.term.options.fontSize = display.fontSize
     entry.term.options.lineHeight = display.lineHeight
     entry.term.options.cursorBlink = display.cursorBlink
