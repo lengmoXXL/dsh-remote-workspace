@@ -140,18 +140,22 @@ const MEMORY_KEY = 'dsh-remote-workspace.terminal'
  * @returns the remembered registry id, if any.
  */
 export function lastTerminal(sessionId: string): string | undefined {
+  return readMemory()[sessionId]
+}
+
+/** This page's memory of one terminal per Session, as stored; empty when unreadable. */
+function readMemory(): Record<string, string> {
   try {
-    const known = JSON.parse(localStorage.getItem(MEMORY_KEY) ?? '{}') as Record<string, string>
-    return known[sessionId]
+    return JSON.parse(localStorage.getItem(MEMORY_KEY) ?? '{}') as Record<string, string>
   } catch {
-    return undefined
+    return {}
   }
 }
 
 /** Record one Session's terminal, or forget it when `id` is null. */
 function memorize(sessionId: string, id: string | null): void {
   try {
-    const known = JSON.parse(localStorage.getItem(MEMORY_KEY) ?? '{}') as Record<string, string>
+    const known = readMemory()
     if (id === null) delete known[sessionId]
     else known[sessionId] = id
     localStorage.setItem(MEMORY_KEY, JSON.stringify(known))
