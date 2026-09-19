@@ -98,6 +98,9 @@ export function sshArgs(target: SshTarget): readonly string[] {
     // Without this a forward that cannot bind leaves an ssh process running
     // that forwards nothing, which reads as a healthy connection.
     '-o', 'ExitOnForwardFailure=yes',
+    // A forward has to die when the link does: the connection manager watches
+    // this process to publish the loss, and a half-open link would otherwise
+    // leave it running for hours, forwarding nothing.
     '-o', 'ServerAliveInterval=15',
     '-o', 'ServerAliveCountMax=3',
     ...target.sshPort === undefined ? [] : ['-p', String(target.sshPort)],
