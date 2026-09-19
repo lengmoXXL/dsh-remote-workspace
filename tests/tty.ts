@@ -9,6 +9,33 @@
 
 import { Context } from '@deepseek-ai/cordis'
 import { LocalTtyRuntime } from '../src/local/tty.ts'
+import type { TtyHandle } from '../src/tty.ts'
+
+/**
+ * One terminal's output, collected as it arrives.
+ * @param handle - the terminal to read.
+ * @returns the text seen so far, and a wait for more of it.
+ */
+export function watcher(handle: TtyHandle): {
+  seen(): string
+  until(needle: string, timeoutMs?: number): Promise<string>
+} {
+  let seen = ''
+  handle.output.on('data', (chunk: Buffer) => { seen += chunk.toString('utf8') })
+  return {
+    seen: () => seen,
+    async until(needle: string, timeoutMs = 5000): Promise<string> {
+      const deadline = Date.now() + timeoutMs
+      while (!seen.includes(needle)) {
+        if (Date.now() > deadline) {
+          throw new Error(`waited for ${JSON.stringify(needle)}, saw: ${JSON.stringify(seen)}`)
+        }
+        await new Promise(resolve => setTimeout(resolve, 10))
+      }
+      return seen
+    },
+  }
+}
 
 /**
  * Probe for a usable PTY.

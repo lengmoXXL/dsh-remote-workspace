@@ -10,9 +10,9 @@
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import type { TtyHandle } from '../../src/tty.ts'
 import { createRemoteTty } from '../../src/remote/tty.ts'
 import type { TtyWire, TtyWireOutcome, TtyWireSpawnRequest, TtyWireRead } from '../../src/remote/tty.ts'
+import { watcher } from '../tty.ts'
 
 /** One call the provider made, as the scripted wire recorded it. */
 type Call =
@@ -81,27 +81,6 @@ const request = {
   cwd: '/srv/checkout',
   cols: 80,
   rows: 24,
-}
-
-/** One terminal's output, collected as it arrives. */
-function watcher(handle: TtyHandle): {
-  seen(): string
-  until(needle: string, timeoutMs?: number): Promise<void>
-} {
-  let seen = ''
-  handle.output.on('data', (chunk: Buffer) => { seen += chunk.toString('utf8') })
-  return {
-    seen: () => seen,
-    async until(needle: string, timeoutMs = 2000): Promise<void> {
-      const deadline = Date.now() + timeoutMs
-      while (!seen.includes(needle)) {
-        if (Date.now() > deadline) {
-          throw new Error(`waited for ${JSON.stringify(needle)}, saw: ${JSON.stringify(seen)}`)
-        }
-        await new Promise(resolve => setTimeout(resolve, 10))
-      }
-    },
-  }
 }
 
 /** Wait for one poll interval and a little more, so a stopped poll is visible. */

@@ -12,8 +12,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
 import { LocalTtyRuntime } from '../../src/local/tty.ts'
-import type { TtyHandle } from '../../src/tty.ts'
-import { ptyUnavailable } from '../tty.ts'
+import { ptyUnavailable, watcher } from '../tty.ts'
 
 /** Skip every case on a host whose sandbox refuses a PTY. */
 const noPty = await ptyUnavailable()
@@ -21,28 +20,6 @@ const noPty = await ptyUnavailable()
 /** The provider every case asks for a terminal. */
 function provider(): LocalTtyRuntime {
   return new LocalTtyRuntime(new Context())
-}
-
-/** One terminal's output, collected as it arrives. */
-function watcher(handle: TtyHandle): {
-  seen(): string
-  until(needle: string, timeoutMs?: number): Promise<string>
-} {
-  let seen = ''
-  handle.output.on('data', (chunk: Buffer) => { seen += chunk.toString('utf8') })
-  return {
-    seen: () => seen,
-    async until(needle: string, timeoutMs = 5000): Promise<string> {
-      const deadline = Date.now() + timeoutMs
-      while (!seen.includes(needle)) {
-        if (Date.now() > deadline) {
-          throw new Error(`waited for ${JSON.stringify(needle)}, saw: ${JSON.stringify(seen)}`)
-        }
-        await new Promise(resolve => setTimeout(resolve, 20))
-      }
-      return seen
-    },
-  }
 }
 
 test('a program runs on a pty and its output comes back', { skip: noPty }, async () => {
