@@ -535,10 +535,10 @@ export function RemoteWorktreesSection(props: SectionProps) {
             // This host has no destination, no tunnel, no token, and no
             // connection to make or break: it is where the harness already is.
             const here = node.transport.kind === 'local'
-            // What the row says in words, when it says anything: the step in
-            // flight, or the state of a machine that is not simply connected.
+            // What the row says in words: what went wrong, the step in flight,
+            // or the state — this host reads as always being available.
             const note = status?.error ?? (step === undefined
-              ? badge.dot === 'done' ? undefined : t(badge.key)
+              ? t(here ? 'status.local' : badge.key)
               : t(step.key, step.params))
             return (
               <div key={node.nodeId} className={css.card}>
@@ -563,14 +563,7 @@ export function RemoteWorktreesSection(props: SectionProps) {
                         : <Tag tone="neutral">{t('forwarding', { port: status.localPort })}</Tag>}
                       {here || node.hasToken ? null : <Tag tone="warning">{t('noToken')}</Tag>}
                       <StateDot state={badge.dot} />
-                      {/* A settled machine says what its dot already says, so
-                          it says nothing: this host is always available and a
-                          connected machine is connected. The words stay for
-                          assistive technology, which cannot read a colour, and
-                          they are shown while a step is in flight or a state is
-                          one a dot cannot tell apart — a red dot names no
-                          reason by itself. */}
-                      <span className={css.meta}>{note ?? t(here ? 'status.local' : badge.key)}</span>
+                      <span className={css.meta}>{note}</span>
                       <Button
                         size="sm"
                         icon={<IconProjectAddOutline16 />}
@@ -688,31 +681,31 @@ export function RemoteWorktreesSection(props: SectionProps) {
                               </span>
                             </div>
                             {worktrees.length === 0 && !entry.git ? null : (
-                                <div className={css.worktrees}>
-                                  {worktrees.length === 0
-                                    ? <div className={css.empty}>{t('worktreesEmpty')}</div>
-                                    : worktrees.map(item => (
-                                      <WorktreeRow
-                                        key={item.anchor.anchorId}
-                                        entry={item}
-                                        busy={busy}
-                                        t={t}
-                                        onToggleOpen={() => void mutate(() => (
-                                          item.open
-                                            ? props.closeWorktree(item.anchor.anchorId)
-                                            : props.openWorktree(item.anchor.anchorId)
-                                        ))}
-                                        onRemove={() => confirm({
-                                          titleKey: 'removeWorktreeTitle',
-                                          bodyKey: item.managed
-                                            ? 'removeWorktreeBody'
-                                            : 'removeAdoptedWorktreeBody',
-                                          optionKey: 'removeWorktreeBranch',
-                                          run: deleteBranch => props.removeWorktree(item.anchor.anchorId, deleteBranch),
-                                        })}
-                                      />
-                                    ))}
-                                </div>
+                              <div className={css.worktrees}>
+                                {worktrees.length === 0
+                                  ? <div className={css.empty}>{t('worktreesEmpty')}</div>
+                                  : worktrees.map(item => (
+                                    <WorktreeRow
+                                      key={item.anchor.anchorId}
+                                      entry={item}
+                                      busy={busy}
+                                      t={t}
+                                      onToggleOpen={() => void mutate(() => (
+                                        item.open
+                                          ? props.closeWorktree(item.anchor.anchorId)
+                                          : props.openWorktree(item.anchor.anchorId)
+                                      ))}
+                                      onRemove={() => confirm({
+                                        titleKey: 'removeWorktreeTitle',
+                                        bodyKey: item.managed
+                                          ? 'removeWorktreeBody'
+                                          : 'removeAdoptedWorktreeBody',
+                                        optionKey: 'removeWorktreeBranch',
+                                        run: deleteBranch => props.removeWorktree(item.anchor.anchorId, deleteBranch),
+                                      })}
+                                    />
+                                  ))}
+                              </div>
                             )}
                           </div>
                         )

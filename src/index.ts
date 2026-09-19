@@ -366,6 +366,9 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   // The registry is the one handle on the shells a person's tabs have open: the
   // socket registers through it, the model-facing tool addresses it, and each
   // side releases only what it owns.
+  // One directory answers two questions — which machine serves it, and where a
+  // shell in it lands — so the route that answers both is read once.
+  const routeOf = (cwd: string) => classifyPath(cwd, undefined, anchorStore.routes())
   const terminals = createTerminalRegistry({
     // Read at open time, not at composition time: the routing provider is
     // published asynchronously from its own scope, exactly as the socket's
@@ -377,16 +380,16 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     },
     settings: terminalSettings,
     machine: (cwd) => {
-      // The anchor route that owns this directory names the machine; a
-      // directory no anchor claims runs locally.
-      const route = classifyPath(cwd, undefined, anchorStore.routes())
+      // The route that owns this directory names the machine; a directory no
+      // anchor claims runs locally.
+      const route = routeOf(cwd)
       const nodeId = route.kind === 'remote' ? route.nodeId : LOCAL_NODE_ID
       return { label: registry.get(nodeId as NodeId)?.title ?? nodeId }
     },
     directory: (cwd) => {
-      // The same route that decides the machine decides the directory: a shell
-      // in a routed workspace runs at the checkout on that machine.
-      const route = classifyPath(cwd, undefined, anchorStore.routes())
+      // The same route decides where a shell really lands: one in a routed
+      // workspace runs at the checkout on that machine.
+      const route = routeOf(cwd)
       return route.kind === 'remote' ? route.remotePath : cwd
     },
   })

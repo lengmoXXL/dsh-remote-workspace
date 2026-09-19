@@ -9,9 +9,6 @@
  * @module dsh-remote-workspace/plugin/client/terminal/settings
  */
 
-/** The family a terminal is drawn in until someone chooses another. */
-const DEFAULT_FONT = "'SF Mono', Menlo, 'DejaVu Sans Mono', 'Cascadia Mono', Consolas, 'Liberation Mono', monospace"
-
 /** One monospace family a terminal may be drawn in. */
 export interface TerminalFont {
   /** The family list the terminal is created with. */
@@ -21,7 +18,10 @@ export interface TerminalFont {
 }
 
 /** The family a terminal is drawn in until someone chooses another. */
-export const DEFAULT_TERMINAL_FONT: TerminalFont = { name: 'SF Mono', stack: DEFAULT_FONT }
+export const DEFAULT_TERMINAL_FONT: TerminalFont = {
+  name: 'SF Mono',
+  stack: "'SF Mono', Menlo, 'DejaVu Sans Mono', 'Cascadia Mono', Consolas, 'Liberation Mono', monospace",
+}
 
 /** The families a person may choose between, the default first. */
 export const TERMINAL_FONTS: readonly TerminalFont[] = [
@@ -35,8 +35,8 @@ export const TERMINAL_FONTS: readonly TerminalFont[] = [
 
 /** What one terminal is drawn with. */
 export interface TerminalDisplaySettings {
-  /** The CSS family list, one of {@link TERMINAL_FONTS}. */
-  readonly fontFamily: string
+  /** The family a terminal is drawn in, one of {@link TERMINAL_FONTS}. */
+  readonly font: TerminalFont
   /** Cell height in pixels. */
   readonly fontSize: number
   /** Line box as a multiple of the font size. */
@@ -49,7 +49,7 @@ export interface TerminalDisplaySettings {
 
 /** The settings a terminal starts with. */
 export const TERMINAL_DEFAULTS: TerminalDisplaySettings = {
-  fontFamily: DEFAULT_FONT,
+  font: DEFAULT_TERMINAL_FONT,
   fontSize: 12,
   lineHeight: 1.2,
   cursorBlink: true,
@@ -91,9 +91,9 @@ function read(): TerminalDisplaySettings {
     // Storage can be unavailable, or hold a value another build wrote; the
     // defaults are a working terminal either way.
   }
-  const known = TERMINAL_FONTS.find(font => font.stack === stored.fontFamily)
+  const known = TERMINAL_FONTS.find(font => font.name === stored.font?.name)
   return {
-    fontFamily: known === undefined ? TERMINAL_DEFAULTS.fontFamily : known.stack,
+    font: known ?? DEFAULT_TERMINAL_FONT,
     fontSize: clampNumber(stored.fontSize, TERMINAL_STEPS.fontSize, TERMINAL_DEFAULTS.fontSize),
     lineHeight: clampNumber(stored.lineHeight, TERMINAL_STEPS.lineHeight, TERMINAL_DEFAULTS.lineHeight),
     cursorBlink: typeof stored.cursorBlink === 'boolean' ? stored.cursorBlink : TERMINAL_DEFAULTS.cursorBlink,

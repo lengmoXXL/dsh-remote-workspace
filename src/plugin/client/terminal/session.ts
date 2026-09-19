@@ -325,7 +325,7 @@ function create(mount: TerminalMount): Entry {
   const display = terminalDisplaySettings()
   const term = new Terminal({
     cursorBlink: display.cursorBlink,
-    fontFamily: display.fontFamily,
+    fontFamily: display.font.stack,
     fontSize: display.fontSize,
     lineHeight: display.lineHeight,
     scrollback: display.scrollback,
@@ -571,7 +571,7 @@ export function terminalState(sessionId: string, tabId: string): TerminalState {
 export function applyTerminalDisplaySettings(): void {
   const display = terminalDisplaySettings()
   for (const entry of entries.values()) {
-    entry.term.options.fontFamily = display.fontFamily
+    entry.term.options.fontFamily = display.font.stack
     entry.term.options.fontSize = display.fontSize
     entry.term.options.lineHeight = display.lineHeight
     entry.term.options.cursorBlink = display.cursorBlink

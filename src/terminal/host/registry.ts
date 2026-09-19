@@ -473,8 +473,6 @@ export function createTerminalRegistry(options: TerminalRegistryOptions): Termin
         label: `Terminal ${String(ordinal)}`,
         sessionId,
         machine: where.label,
-        // The shell's own directory, which a routed workspace moves to the
-        // machine that holds the checkout.
         cwd: options.directory(cwd),
         handle,
         buffer: Buffer.alloc(0),

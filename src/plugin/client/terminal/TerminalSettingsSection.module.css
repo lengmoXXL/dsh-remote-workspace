@@ -17,7 +17,6 @@
   font-family: var(--dsw-font-family);
   font-size: 13px;
 }
-.head { display: flex; flex-direction: column; gap: 6px; }
 .title { margin: 0; font-size: 14px; font-weight: 600; }
 .rows { display: flex; flex-direction: column; }
 .row {
