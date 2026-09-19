@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>终端</title>
+<style>
+:root{color-scheme:dark;
+--dsw-font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Helvetica Neue",Helvetica,Arial,sans-serif;
+--ds-font-family-code:"SF Mono","JetBrains Mono","Fira Code",Consolas,"Liberation Mono",Menlo,Courier,"PingFang SC","Microsoft YaHei";
+--dsw-alias-bg-base:#151517;--dsw-alias-bg-layer-1:#232324;--dsw-alias-bg-layer-2:#2c2c2e;--dsw-alias-bg-layer-3:#353638;
+--dsw-alias-bg-module-platform:#353638;--dsw-alias-bg-skeleton:#ffffff14;--dsw-alias-markdown-code-block:#1b1b1c;
+--dsw-alias-border-l1:#ffffff0f;--dsw-alias-border-l2:#ffffff1f;--dsw-alias-border-l3:#ffffff29;
+--dsw-alias-label-primary:#f9fafb;--dsw-alias-label-secondary:#cfd3d6;--dsw-alias-label-tertiary:#adb2b8;--dsw-alias-label-caption:#81858c;
+--dsw-alias-label-primary-foreground:#0f1115;--dsw-alias-button-primary-fill:#f9fafb;--dsw-alias-button-primary-hover:#ebeef2;
+--dsw-alias-interactive-bg-hover:#ffffff14;--dsw-alias-interactive-bg-active:#ffffff24;
+--dsw-alias-state-success-primary:#4ed17e;--dsw-alias-state-warn-primary:#f7ad31;--dsw-alias-state-error-primary:#f25a5a;
+--dsw-alias-link:#679efe;--dsw-alias-toast-bg:#43454a;--dsw-alias-tooltip-bg:#43454a;
+--dsw-elevation-panel:0 0 0 .5px #00000029,0 3px 8px 0 #00000008,0 0 16px 0 #00000005;
+--ds-ease-in-out:cubic-bezier(.4,0,.2,1)}
+*{box-sizing:border-box}html,body{margin:0}
+body{min-height:100vh;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family);font-size:14px;line-height:22px}
+.panel{max-width:680px;margin:0 auto;padding:16px}
+.grow{flex:1;min-width:0}
+.ibtn{position:relative;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer}
+.ibtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.ibtn:active{background:var(--dsw-alias-interactive-bg-active)}
+.ibtn.primary{background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground)}
+.ibtn.primary:hover{background:var(--dsw-alias-button-primary-hover);color:var(--dsw-alias-label-primary-foreground)}
+.ibtn::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 7px);left:50%;transform:translateX(-50%) scale(.96);background:var(--dsw-alias-tooltip-bg);color:var(--dsw-alias-label-primary);font:500 11px/16px var(--dsw-font-family);padding:3px 7px;border-radius:6px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .12s var(--ds-ease-in-out),transform .12s var(--ds-ease-in-out);z-index:90}
+.ibtn:hover::after{opacity:1;transform:translateX(-50%) scale(1)}
+.ibtn.rt::after{left:auto;right:0;transform:translateX(0) scale(.96)}
+.ibtn.rt:hover::after{transform:translateX(0) scale(1)}
+.ibtn.db::after{bottom:auto;top:calc(100% + 7px)}.btn{display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:8px;border:1px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-primary);font:500 13px/1 var(--dsw-font-family);cursor:pointer}.btn:hover{background:var(--dsw-alias-interactive-bg-hover)}.btn-primary{background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground);border-color:transparent}.btn-primary:hover{background:var(--dsw-alias-button-primary-hover)}.btn-danger{background:var(--dsw-alias-state-error-primary);color:#fff;border-color:transparent}.btn-danger:hover{filter:brightness(1.08)}
+.pane{border:1px solid var(--dsw-alias-border-l1);border-radius:12px;background:var(--dsw-alias-markdown-code-block)}
+.bar{display:flex;align-items:center;gap:4px;padding:6px 8px;background:var(--dsw-alias-bg-layer-1);border-bottom:1px solid var(--dsw-alias-border-l1);border-radius:12px 12px 0 0}
+.bar .path{flex:1;min-width:0;font-family:var(--ds-font-family-code);font-size:11.5px;color:var(--dsw-alias-label-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar .note{font-size:11px;color:var(--dsw-alias-label-caption)}
+.screen{padding:12px 14px;min-height:300px;font-family:var(--ds-font-family-code);font-size:12px;line-height:19px;white-space:pre-wrap;word-break:break-word;border-radius:0 0 12px 12px}
+.screen .p{color:var(--dsw-alias-state-success-primary)}
+.screen .cwd{color:var(--dsw-alias-link)}
+.screen .cmd{color:var(--dsw-alias-label-primary)}
+.screen .o{color:var(--dsw-alias-label-tertiary)}
+.screen .ok{color:var(--dsw-alias-state-success-primary)}
+.screen .w{color:var(--dsw-alias-state-warn-primary)}
+.cursor{display:inline-block;width:7px;height:14px;background:var(--dsw-alias-label-primary);vertical-align:-2px;border-radius:1px;animation:blink 1.1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.picker{padding:16px;border-radius:12px}
+.picker h2{margin:0;font-size:15px;font-weight:600}
+.picker p{margin:6px 0 14px;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}
+.prow{display:flex;align-items:center;gap:10px;padding:8px 9px 8px 11px;margin-bottom:8px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-1);cursor:pointer}
+.prow:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.prow .lbl{font-size:13px;font-weight:500}
+.prow .meta{margin-top:2px;font-size:11px;color:var(--dsw-alias-label-caption);font-family:var(--ds-font-family-code);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.opened{font-size:10px;font-weight:600;color:var(--dsw-alias-link);background:var(--dsw-alias-interactive-bg-active);border-radius:5px;padding:2px 6px;margin-left:7px}
+.st{font-size:11px;font-weight:500;color:var(--dsw-alias-label-tertiary)}
+.st.run{color:var(--dsw-alias-state-success-primary)}
+.st.off{color:var(--dsw-alias-label-caption)}
+.pfoot{display:flex;justify-content:flex-end;gap:6px;margin-top:14px}
+.empty{padding:26px 16px;text-align:center;color:var(--dsw-alias-label-caption);font-size:12.5px}
+.toasts{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:120;display:flex;flex-direction:column;gap:8px;align-items:center}
+.toast{background:var(--dsw-alias-toast-bg);color:#fff;font-size:12.5px;padding:8px 14px;border-radius:9px;box-shadow:var(--dsw-elevation-panel);animation:pop .18s}
+@keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<main class="panel"><div id="pane"></div></main>
+<div class="toasts" id="toasts"></div>
+<script>
+(function(){
+"use strict";
+function byId(id){ return document.getElementById(id); }
+function esc(s){ return String(s == null ? "" : s).replace(/[&<>"]/g, function(c){ if(c === "&") return "&amp;"; if(c === "<") return "&lt;"; if(c === ">") return "&gt;"; return "&quot;"; }); }
+function frag(){ return Array.prototype.slice.call(arguments).join(""); }
+function toast(msg){ var el = document.createElement("div"); el.className = "toast"; el.textContent = msg; byId("toasts").appendChild(el); setTimeout(function(){ el.remove(); }, 2200); }
+var S = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">';
+var ICON = {
+  plus: S + '<path d="M12 5v14M5 12h14"/></svg>',
+  x: S + '<path d="M6 6l12 12M18 6L6 18"/></svg>',
+  rotate: S + '<path d="M20 11a8 8 0 10-.6 4"/><path d="M20 5v6h-6"/></svg>',
+  ellipsis: '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><circle cx="3.4" cy="8" r="1.15"/><circle cx="8" cy="8" r="1.15"/><circle cx="12.6" cy="8" r="1.15"/></svg>'
+};
+function ib(act, icon, tip, cls, extra){ return '<button type="button" class="ibtn' + (cls ? " " + cls : "") + '" data-act="' + act + '" data-tip="' + esc(tip) + '" aria-label="' + esc(tip) + '" ' + (extra || "") + ">" + icon + "</button>"; }
+var CWD = "/workspace/demo-repo/scratch";
+var LINE = function(p, cmd, cursor){ return { k: "cmd", p: p, cwd: CWD, t: cmd, cursor: cursor === true }; };
+var OUT = function(t){ return { k: "o", t: t }; };
+var OK = function(t){ return { k: "ok", t: t }; };
+var WARN = function(t){ return { k: "w", t: t }; };
+var BLANK = { k: "blank" };
+var terminals = [
+  { id: "t1", label: "Terminal 1", state: "running", pid: 41822, fixedSize: false, lines: [
+    LINE("e2e@build-01", "git worktree list"), OUT("/workspace/demo-repo              c8f1a2d [main]"), OUT("/workspace/demo-repo/scratch      4b9e0d1 [worktree/scratch]"), BLANK,
+    LINE("e2e@build-01", "npm test"), OUT("> dsh-remote-workspace@0.1.11 test"), OK("422 tests · 407 pass · 0 fail · 15 skipped"), WARN("15 skipped on this host (no pseudo-terminal)"), BLANK,
+    LINE("e2e@build-01", "", true) ] },
+  { id: "t2", label: "Terminal 2", state: "running", pid: 42108, fixedSize: true, lines: [
+    LINE("e2e@build-01", "make build"), OUT("cc -O2 -o demo main.c"), OK("build ok"), BLANK, LINE("e2e@build-01", "", true) ] },
+  { id: "t3", label: "Terminal 3", state: "detached", pid: 40310, fixedSize: false, lines: [
+    OUT("(连接已断开) shell 仍在机器上，重新打开可恢复。"), BLANK, LINE("e2e@build-01", "", true) ] }
+];
+var current = "t1", showPicker = false, nextNum = 4;
+function byId2(id){ for (var i = 0; i < terminals.length; i++) { if (terminals[i].id === id) return terminals[i]; } return null; }
+function statusText(t){ if (t.state === "running") return CWD; if (t.state === "detached") return "连接已断开"; if (t.state === "failed") return "终端未能打开：" + (t.message || ""); return "终端已退出（退出码 0）"; }
+function stateText(s){ if (s === "running") return "运行中"; if (s === "detached") return "已断开"; return "已退出"; }
+function gone(t){ return t.state === "detached" || t.state === "exited" || t.state === "failed"; }
+function render(){ byId("pane").innerHTML = showPicker ? pickerHtml() : paneHtml(byId2(current)); }
+function paneHtml(t){
+  var actions = [];
+  if (t.state === "running" && t.fixedSize) actions.push('<span class="note">这台机器上的终端不支持调整大小</span>');
+  if (gone(t)) actions.push(ib("restart", ICON.rotate, "重新打开", "db"));
+  actions.push(ib("new", ICON.ellipsis, "管理终端", "db"));
+  return frag('<div class="pane"><div class="bar"><span class="path">', esc(statusText(t)), '</span>', actions.join(""), "</div>",
+    '<div class="screen">', t.state === "running" ? t.lines.map(lineHtml).join("") : '<div class="o">' + esc(t.state === "detached" ? "（连接已断开）" : "（进程已退出）") + "</div>",
+    "</div></div>");
+}
+function lineHtml(l){
+  if (l.k === "blank") return "<div>&nbsp;</div>";
+  if (l.k === "cmd"){ var d = frag('<div><span class="p">', esc(l.p), '</span>:<span class="cwd">', esc(l.cwd), "</span>$ "); if (l.t) d += '<span class="cmd">' + esc(l.t) + "</span>"; if (l.cursor) d += '<span class="cursor"></span>'; return d + "</div>"; }
+  if (l.k === "ok") return '<div class="ok">' + esc(l.t) + "</div>";
+  if (l.k === "w") return '<div class="w">' + esc(l.t) + "</div>";
+  return '<div class="o">' + esc(l.t) + "</div>";
+}
+function pickerHtml(){
+  var rows = terminals.map(function(t){
+    return frag('<div class="prow" data-pick="', t.id, '"><div class="grow"><div><span class="lbl">', esc(t.label), '</span><span class="opened">已打开</span></div>',
+      '<div class="meta"><span class="st ', t.state === "running" ? "run" : "off", '">', stateText(t.state), "</span> · ", esc(CWD), "</div></div>",
+      ib("closeRow", ICON.x, "关闭终端 " + t.label, "rt", 'data-close="' + t.id + '"'),
+      "</div>");
+  }).join("");
+  return frag('<div class="pane"><div class="picker"><h2>选择终端</h2><p>连接到一个已在运行的终端，或打开一个新的。</p>',
+    rows || '<div class="empty">这个会话里还没有终端。</div>',
+    '<div class="pfoot"><button type="button" class="btn" data-act="cancel">取消</button><button type="button" class="btn btn-primary" data-act="create">新终端</button></div>',
+    "</div></div>");
+}
+byId("pane").addEventListener("click", function(e){
+  var b = e.target.closest("[data-act]");
+  if (!b) { var pick = e.target.closest("[data-pick]"); if (pick) { current = pick.getAttribute("data-pick"); showPicker = false; render(); } return; }
+  var a = b.getAttribute("data-act");
+  if (a === "closeRow"){ var id = b.getAttribute("data-close"); terminals = terminals.filter(function(t){ return t.id !== id; }); if (current === id) current = terminals.length ? terminals[0].id : null; toast("已结束终端"); render(); return; }
+  if (a === "new"){ showPicker = true; render(); return; }
+  if (a === "cancel"){ showPicker = false; render(); return; }
+  if (a === "create"){ var t = { id: "t" + (nextNum++), label: "Terminal " + nextNum, state: "running", pid: 42000 + nextNum, fixedSize: false, lines: [ LINE("e2e@build-01", "", true) ] }; terminals.push(t); current = t.id; showPicker = false; render(); return; }
+  var cur = byId2(current);
+  if (!cur) return;
+  if (a === "restart"){ cur.state = "running"; if (!cur.pid) cur.pid = 42999; render(); return; }
+});
+document.body.setAttribute("data-ds-dark-theme", "");
+render();
+})();
+</script>
+</body>
+</html>

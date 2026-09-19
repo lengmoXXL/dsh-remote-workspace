@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>远程工作区</title>
+<style>
+:root{color-scheme:dark;
+--dsw-font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Helvetica Neue",Helvetica,Arial,sans-serif;
+--ds-font-family-code:"SF Mono","JetBrains Mono","Fira Code",Consolas,"Liberation Mono",Menlo,Courier,"PingFang SC","Microsoft YaHei";
+--dsw-alias-bg-base:#151517;--dsw-alias-bg-layer-1:#232324;--dsw-alias-bg-layer-2:#2c2c2e;--dsw-alias-bg-layer-3:#353638;
+--dsw-alias-bg-module-platform:#353638;--dsw-alias-bg-overlay:#61666b;--dsw-alias-bg-skeleton:#ffffff14;
+--dsw-alias-border-l1:#ffffff0f;--dsw-alias-border-l2:#ffffff1f;--dsw-alias-border-l3:#ffffff29;--dsw-alias-border-l4:#ffffff33;
+--dsw-alias-label-primary:#f9fafb;--dsw-alias-label-secondary:#cfd3d6;--dsw-alias-label-tertiary:#adb2b8;--dsw-alias-label-caption:#81858c;
+--dsw-alias-label-primary-foreground:#0f1115;--dsw-alias-button-primary-fill:#f9fafb;--dsw-alias-button-primary-hover:#ebeef2;
+--dsw-alias-interactive-bg-hover:#ffffff14;--dsw-alias-interactive-bg-active:#ffffff24;
+--dsw-alias-state-success-primary:#4ed17e;--dsw-alias-state-success-tertiary:#233c2c;
+--dsw-alias-state-error-primary:#f25a5a;--dsw-alias-state-error-tertiary:#570c0c;
+--dsw-alias-state-warn-primary:#f7ad31;--dsw-alias-state-warn-tertiary:#27241f;
+--dsw-alias-link:#679efe;--dsw-alias-toast-bg:#43454a;--dsw-alias-tooltip-bg:#43454a;--bg-mask:#00000080;--proto-page:var(--dsw-alias-bg-base);
+--dsw-elevation-panel:0 0 0 .5px #00000029,0 3px 8px 0 #00000008,0 0 16px 0 #00000005;
+--dsw-elevation-prominent:0 0 0 .5px #00000029,0 3px 8px 0 #0000000a,0 0 20px 0 #0000000d;
+--dsw-elevation-soft:0 0 0 .5px #00000029,0 4px 16px 0 #00000008,0 0 24px 0 #00000008;
+--ds-ease-in-out:cubic-bezier(.4,0,.2,1)}
+*{box-sizing:border-box}html,body{margin:0}
+body{min-height:100vh;background:var(--proto-page);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family);font-size:14px;line-height:22px}
+.wrap{max-width:880px;margin:0 auto;padding:24px 32px 60px}
+.grow{flex:1;min-width:0}
+.ibtn{position:relative;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer}
+.ibtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.ibtn:active{background:var(--dsw-alias-interactive-bg-active)}
+.ibtn[disabled]{opacity:.4;cursor:not-allowed;color:var(--dsw-alias-label-caption)}
+.ibtn[disabled]:hover{background:transparent;color:var(--dsw-alias-label-caption)}
+.ibtn.primary{background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground)}
+.ibtn.primary:hover{background:var(--dsw-alias-button-primary-hover);color:var(--dsw-alias-label-primary-foreground)}
+.ibtn.danger{color:var(--dsw-alias-state-error-primary)}
+.ibtn.danger:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-state-error-primary)}
+.ibtn::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 7px);left:50%;transform:translateX(-50%) scale(.96);background:var(--dsw-alias-tooltip-bg);color:var(--dsw-alias-label-primary);font:500 11px/16px var(--dsw-font-family);padding:3px 7px;border-radius:6px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .12s var(--ds-ease-in-out),transform .12s var(--ds-ease-in-out);z-index:90}
+.ibtn:hover::after{opacity:1;transform:translateX(-50%) scale(1)}
+.ibtn.rt::after{left:auto;right:0;transform:translateX(0) scale(.96)}
+.ibtn.rt:hover::after{transform:translateX(0) scale(1)}
+.ibtn.db::after{bottom:auto;top:calc(100% + 7px)}.btn{display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:8px;border:1px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-primary);font:500 13px/1 var(--dsw-font-family);cursor:pointer}.btn:hover{background:var(--dsw-alias-interactive-bg-hover)}.btn-primary{background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground);border-color:transparent}.btn-primary:hover{background:var(--dsw-alias-button-primary-hover)}.btn-danger{background:var(--dsw-alias-state-error-primary);color:#fff;border-color:transparent}.btn-danger:hover{filter:brightness(1.08)}
+.head{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:18px}
+.head h1{margin:0;font-size:24px;line-height:32px;font-weight:600;letter-spacing:-.2px}
+.head-actions{display:flex;gap:6px;flex-shrink:0}
+.card{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:12px;box-shadow:var(--dsw-elevation-soft);margin-bottom:14px}
+.card-head{display:flex;align-items:center;gap:12px;padding:13px 14px;cursor:pointer;border-radius:12px 12px 0 0}
+.card-head:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.card-body > :first-child{border-top-left-radius:0;border-top-right-radius:0}
+.card-body > :last-child{border-bottom-left-radius:12px;border-bottom-right-radius:12px}
+.m-ico{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;flex:0 0 34px;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary)}
+.m-title{display:flex;align-items:center;gap:8px}.m-title b{font-weight:600;font-size:14px}
+.m-meta{margin-top:2px;color:var(--dsw-alias-label-caption);font-size:12px;font-family:var(--ds-font-family-code);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.status{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--dsw-alias-label-secondary)}
+.dot{width:7px;height:7px;border-radius:50%;flex:0 0 7px;background:var(--dsw-alias-label-caption)}
+.dot.ok{background:var(--dsw-alias-state-success-primary)}.dot.warn{background:var(--dsw-alias-state-warn-primary)}.dot.err{background:var(--dsw-alias-state-error-primary)}
+
+.card-body{border-top:1px solid var(--dsw-alias-border-l1);display:none}.card.open .card-body{display:block}
+.progress{padding:11px 14px;background:var(--dsw-alias-state-warn-tertiary);border-bottom:1px solid var(--dsw-alias-border-l1)}
+.progress .row{display:flex;justify-content:space-between;font-size:12px;color:var(--dsw-alias-state-warn-primary);font-weight:500}
+.track{height:4px;border-radius:999px;background:var(--dsw-alias-bg-skeleton);overflow:hidden;margin-top:8px}
+.track i{display:block;height:100%;border-radius:999px;background:var(--dsw-alias-state-warn-primary);transition:width .4s}
+.repo{display:flex;align-items:center;gap:12px;padding:11px 14px}
+.repo+.repo,.repo+.wt,.wt+.repo,.wt+.wt{border-top:1px solid var(--dsw-alias-border-l1)}
+.r-ico{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;flex:0 0 26px;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-tertiary)}
+.r-name{font-size:13px;font-weight:500}
+.r-path{margin-top:1px;color:var(--dsw-alias-label-caption);font-size:11px;font-family:var(--ds-font-family-code);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.actions{display:flex;align-items:center;gap:4px;flex-shrink:0}.actions .spacer{display:block;width:28px;height:28px}
+.tag{font-size:10px;font-weight:600;padding:2px 7px;border-radius:5px;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-tertiary)}
+.tag.branch{font-family:var(--ds-font-family-code);color:var(--dsw-alias-state-success-primary);background:var(--dsw-alias-state-success-tertiary)}
+
+.wt{display:flex;align-items:center;gap:10px;padding:9px 14px 9px 40px;background:var(--dsw-alias-bg-module-platform)}
+.wt .w-ico{width:24px;height:24px;border-radius:6px;display:grid;place-items:center;flex:0 0 24px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary)}
+.wt b{font-size:12.5px;font-weight:500}
+.empty{padding:18px 14px;color:var(--dsw-alias-label-caption);font-size:12.5px;text-align:center}
+.dirs{margin-top:12px;max-height:212px;overflow:auto;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}
+.dirs button{display:flex;width:100%;align-items:center;gap:8px;height:34px;padding:0 11px;border:0;background:transparent;color:var(--dsw-alias-label-primary);font:400 13px/1 var(--dsw-font-family);cursor:pointer;text-align:left}
+.dirs button:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.dirs button + button{border-top:1px solid var(--dsw-alias-border-l1)}
+.dirs .empty{padding:14px;font-size:12px}
+.menu{position:fixed;z-index:100;min-width:170px;padding:4px;border-radius:10px;background:var(--dsw-alias-bg-layer-3);border:1px solid var(--dsw-alias-border-l1);box-shadow:var(--dsw-elevation-panel)}
+.menu button{display:flex;width:100%;align-items:center;gap:8px;height:32px;padding:0 10px;border:0;border-radius:7px;background:transparent;color:var(--dsw-alias-label-primary);font:400 13px/1 var(--dsw-font-family);cursor:pointer;text-align:left}
+.menu button:hover{background:var(--dsw-alias-interactive-bg-hover)}.menu button.danger{color:var(--dsw-alias-state-error-primary)}
+.overlay{position:fixed;inset:0;z-index:110;background:var(--bg-mask);display:flex;align-items:center;justify-content:center;padding:24px}
+.overlay[hidden]{display:none}
+.dialog{width:100%;max-width:440px;border-radius:12px;background:var(--dsw-alias-bg-layer-3);box-shadow:var(--dsw-elevation-prominent)}
+.dialog h2{margin:0;padding:16px 18px 0;font-size:16px;font-weight:600}
+.dialog .lead{margin:8px 0 0;padding:0 18px;color:var(--dsw-alias-label-tertiary);font-size:12.5px;line-height:19px}
+.dialog .fields{padding:14px 18px 4px;display:grid;gap:12px}
+.field label{display:block;font-size:12px;font-weight:500;color:var(--dsw-alias-label-secondary);margin-bottom:5px}
+.field .hint{margin-top:5px;font-size:11px;color:var(--dsw-alias-label-caption);line-height:16px}
+.field input{width:100%;height:34px;padding:0 10px;border-radius:8px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-primary);font:400 13px/1 var(--dsw-font-family);outline:none}
+.field input:focus{border-color:var(--dsw-alias-link)}
+.dialog .foot{display:flex;justify-content:flex-end;gap:6px;padding:16px 18px;margin-top:8px}
+.check{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--dsw-alias-label-secondary);padding:0 18px}
+.toasts{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:120;display:flex;flex-direction:column;gap:8px;align-items:center}
+.toast{background:var(--dsw-alias-toast-bg);color:#fff;font-size:12.5px;padding:8px 14px;border-radius:9px;box-shadow:var(--dsw-elevation-panel);animation:pop .18s}
+@keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.spin{animation:spin .9s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<main class="wrap">
+<header class="head"><h1>远程工作区</h1>
+<div class="head-actions" id="headActions"></div></header>
+<div id="machines"></div>
+</main>
+<div class="toasts" id="toasts"></div><div class="overlay" id="overlay" hidden></div>
+<script>
+(function(){
+"use strict";
+function byId(id){ return document.getElementById(id); }
+function esc(s){ return String(s == null ? "" : s).replace(/[&<>"]/g, function(c){ if(c === "&") return "&amp;"; if(c === "<") return "&lt;"; if(c === ">") return "&gt;"; return "&quot;"; }); }
+function frag(){ return Array.prototype.slice.call(arguments).join(""); }
+function toast(msg){ var el = document.createElement("div"); el.className = "toast"; el.textContent = msg; byId("toasts").appendChild(el); setTimeout(function(){ el.remove(); }, 2200); }
+var S = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">';
+var ICON = {
+  plus: S + '<path d="M12 5v14M5 12h14"/></svg>',
+  refresh: S + '<path d="M20 11a8 8 0 10-.6 4"/><path d="M20 5v6h-6"/></svg>',
+  x: S + '<path d="M6 6l12 12M18 6L6 18"/></svg>',
+  check: S + '<path d="M5 13l4 4L19 7"/></svg>',
+  trash: S + '<path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></svg>',
+  plug: S + '<path d="M12 4v8"/><path d="M7.5 6.5a7 7 0 109 0"/></svg>',
+  unplug: S + '<path d="M12 4v8"/><path d="M7.5 6.5a7 7 0 109 0"/><path d="M4 20L20 4"/></svg>',
+  folderOut: S + '<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M10 15l5-5M12 10h3v3"/></svg>',
+  folderIn: S + '<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M15 10l-5 5M13 15h-3v-3"/></svg>',
+  branch: S + '<path d="M5 3v11"/><circle cx="5" cy="17" r="3"/><circle cx="16" cy="5" r="3"/><path d="M16 8a9 9 0 01-9 9"/><path d="M19 13v6M16 16h6"/></svg>',
+  more: '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>',
+  machine: S + '<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>',
+  repo: S + '<path d="M6 3v12"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9a9 9 0 01-9 9"/></svg>',
+  wt: S + '<circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M6 8.5v7M8.5 6H15a4 4 0 014 4v.5"/></svg>',
+  folder: S + '<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>',
+  folderPlus: S + '<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M12 11v6M9 14h6"/></svg>'
+};
+function ib(act, icon, tip, cls, extra){ return '<button type="button" class="ibtn' + (cls ? " " + cls : "") + '" data-act="' + act + '" data-tip="' + esc(tip) + '" aria-label="' + esc(tip) + '" ' + (extra || "") + ">" + icon + "</button>"; }
+var state = { machines: [
+  { id: "local", title: "Local", kind: "local", status: "local", meta: "本机", repos: [
+    { name: "local-repo", path: "~/projects/local-repo", git: true, open: false, worktrees: [ { name: "here", branch: "worktree/here", path: "~/.dsh/worktrees/local-repo/here", adopted: false, open: false } ] } ] },
+  { id: "e2e", title: "e2e daemon", kind: "ssh", status: "ready", meta: "e2e@127.0.0.1 · 隧道 127.0.0.1:57061", repos: [
+    { name: "demo-repo", path: "/workspace/demo-repo", git: true, open: false, worktrees: [
+      { name: "scratch", branch: "worktree/scratch", path: "/workspace/demo-repo/scratch", adopted: false, open: false },
+      { name: "hand-cut", branch: "worktree/hand", path: "/workspace/demo-repo/hand-cut", adopted: true, open: false } ] },
+    { name: "plain-dir", path: "/workspace/plain-dir", git: false, open: false, worktrees: [] } ] }
+] };
+var openMap = { local: true, e2e: true }, uid = 0, menuEl = null;
+function findMachine(id){ for (var i = 0; i < state.machines.length; i++) { if (state.machines[i].id === id) return state.machines[i]; } return null; }
+function findRepo(m, name){ for (var i = 0; i < m.repos.length; i++) { if (m.repos[i].name === name) return m.repos[i]; } return null; }
+function findWt(r, name){ for (var i = 0; i < r.worktrees.length; i++) { if (r.worktrees[i].name === name) return r.worktrees[i]; } return null; }
+function statusInfo(s){ if (s === "ready") return { c: "ok", t: "已连接" }; if (s === "local") return { c: "ok", t: "始终可用" }; if (s === "connecting") return { c: "warn", t: "连接中" }; if (s === "failed") return { c: "err", t: "连接失败" }; return { c: "", t: "未连接" }; }
+function statusPill(s){ var i = statusInfo(s); return '<span class="status"><i class="dot ' + i.c + '"></i>' + i.t + "</span>"; }
+function render(){
+  byId("headActions").innerHTML = ib("refresh", ICON.refresh, "刷新", "db") + ib("addMachine", ICON.plus, "添加机器", "primary db");
+  byId("machines").innerHTML = state.machines.map(cardHtml).join("") || '<div class="card"><div class="empty">还没有配置机器。添加一台机器后，就能浏览它的仓库并切出 worktree。</div></div>';
+}
+function cardHtml(m){
+  var isOpen = !!openMap[m.id];
+  var h = ['<div class="card' + (isOpen ? " open" : "") + '" data-id="' + m.id + '">'];
+  h.push('<div class="card-head" data-act="toggle"><div class="m-ico">' + ICON.machine + "</div>");
+  h.push('<div class="grow"><div class="m-title"><b>' + esc(m.title) + "</b>" + statusPill(m.status) + "</div>");
+  h.push('<div class="m-meta">' + esc(m.meta) + "</div></div>");
+  h.push('<div class="actions">');
+  h.push(ib("addRepo", ICON.folderPlus, "添加仓库", "", 'data-id="' + esc(m.id) + '"'));
+  if (m.kind !== "local") h.push(ib("conn", m.status === "ready" ? ICON.unplug : ICON.plug, m.status === "ready" ? "断开" : "连接"));
+  else h.push('<span class="spacer"></span>');
+  h.push(ib("menu", ICON.more, "更多", "rt"));
+  h.push("</div></div>");
+  if (m.status === "connecting") h.push('<div class="progress"><div class="row"><span>' + esc(m.progressText || "检查远端环境…") + "</span><span>" + m.progress + '%</span></div><div class="track"><i style="width:' + m.progress + '%"></i></div></div>');
+  h.push('<div class="card-body">' + reposHtml(m) + "</div></div>");
+  return h.join("");
+}
+function reposHtml(m){ if (!m.repos.length) return '<div class="empty">这台机器上还没有登记仓库。</div>'; return m.repos.map(function(r){ return repoHtml(m, r); }).join(""); }
+function repoHtml(m, r){
+  var h = ['<div class="repo">'];
+  h.push('<div class="r-ico">' + (r.git ? ICON.repo : ICON.folder) + "</div>");
+  h.push('<div class="grow"><div class="r-name">' + esc(r.name) + '</div><div class="r-path">' + esc(r.path) + "</div></div>");
+  h.push('<div class="actions">');
+  h.push(ib(r.open ? "closeRepo" : "openRepo", r.open ? ICON.folderIn : ICON.folderOut, r.open ? "关闭工作区" : "打开工作区", "", 'data-repo="' + esc(r.name) + '"'));
+  h.push(r.git ? ib("newWorktree", ICON.branch, "新建 worktree", "", 'data-repo="' + esc(r.name) + '"') : ib("noop", ICON.branch, "新建 worktree", "", 'data-repo="' + esc(r.name) + '" disabled'));
+  h.push(ib("repoMenu", ICON.more, "更多", "rt", 'data-repo="' + esc(r.name) + '"'));
+  h.push("</div></div>");
+  if (r.git) h.push(r.worktrees.map(function(w){ return wtHtml(r, w); }).join(""));
+  return h.join("");
+}
+function wtHtml(r, w){
+  var h = ['<div class="wt"><div class="w-ico">' + ICON.wt + "</div>"];
+  h.push('<div class="grow"><b>' + esc(w.name) + "</b> " + '<span class="tag branch">' + esc(w.branch) + "</span> ");
+  h.push('<span class="r-path">' + esc(w.path) + "</span></div>");
+  h.push('<div class="actions">');
+  h.push(ib(w.open ? "closeWt" : "openWt", w.open ? ICON.folderIn : ICON.folderOut, w.open ? "关闭工作区" : "打开工作区", "", 'data-repo="' + esc(r.name) + '" data-wt="' + esc(w.name) + '"'));
+  h.push('<span class="spacer"></span>');
+  h.push(ib("wtMenu", ICON.more, "更多", "rt", 'data-repo="' + esc(r.name) + '" data-wt="' + esc(w.name) + '"'));
+  h.push("</div></div>");
+  return h.join("");
+}
+function closeMenu(){ if (menuEl) { menuEl.remove(); menuEl = null; } document.removeEventListener("mousedown", onDocDown, true); }
+function onDocDown(e){ if (menuEl && !menuEl.contains(e.target)) closeMenu(); }
+function openMenu(anchor, items){
+  closeMenu();
+  var el = document.createElement("div"); el.className = "menu";
+  el.innerHTML = items.map(function(it, i){ return '<button type="button" class="' + (it.danger ? "danger" : "") + '" data-i="' + i + '">' + esc(it.label) + "</button>"; }).join("");
+  document.body.appendChild(el);
+  var r = anchor.getBoundingClientRect();
+  el.style.left = Math.max(10, Math.min(r.right - 170, window.innerWidth - 182)) + "px";
+  el.style.top = Math.min(r.bottom + 6, window.innerHeight - 8 - el.offsetHeight) + "px";
+  el.addEventListener("click", function(e){ var b = e.target.closest("button"); if (!b) return; var it = items[Number(b.dataset.i)]; closeMenu(); it.run(); });
+  menuEl = el;
+  setTimeout(function(){ document.addEventListener("mousedown", onDocDown, true); }, 0);
+}
+function dialog(opts){
+  var ov = byId("overlay");
+  var h = ['<div class="dialog" role="dialog" aria-modal="true">'];
+  h.push("<h2>" + esc(opts.title) + "</h2>");
+  if (opts.lead) h.push('<p class="lead">' + esc(opts.lead) + "</p>");
+  if (opts.fields && opts.fields.length) h.push('<div class="fields">' + opts.fields.map(function(f){
+    var x = '<div class="field"><label for="f_' + f.key + '">' + esc(f.label) + "</label>";
+    x += '<input id="f_' + f.key + '" data-key="' + f.key + '" value="' + esc(f.value || "") + '" placeholder="' + esc(f.placeholder || "") + '">';
+    if (f.hint) x += '<div class="hint">' + esc(f.hint) + "</div>";
+    return x + "</div>";
+  }).join("") + "</div>");
+  if (opts.check) h.push('<label class="check"><input type="checkbox" id="chk"> ' + esc(opts.check) + "</label>");
+  h.push('<div class="foot"><button type="button" class="btn" data-act="cancel">取消</button><button type="button" class="btn ' + (opts.danger ? "btn-danger" : "btn-primary") + '" data-act="ok">' + esc(opts.okText || "创建") + "</button></div></div>");
+  ov.innerHTML = h.join(""); ov.hidden = false;
+  var first = ov.querySelector("input"); if (first) setTimeout(function(){ first.focus(); }, 30);
+  function done(ok){ var values = {}; ov.querySelectorAll("input[data-key]").forEach(function(i){ values[i.dataset.key] = i.value; }); ov.hidden = true; ov.innerHTML = ""; if (ok && opts.onOk) opts.onOk(values); }
+  ov.onclick = function(e){ if (e.target === ov) return done(false); var b = e.target.closest("[data-act]"); if (!b) return; done(b.getAttribute("data-act") === "ok"); };
+  ov.onkeydown = function(e){ if (e.key === "Escape") done(false); };
+}
+var TREE = { "~": ["projects", ".dsh"], "~/projects": ["local-repo"], "/workspace": ["demo-repo", "plain-dir", "scratch"], "/workspace/demo-repo": ["docs", "src", "tests"], "/workspace/plain-dir": ["assets"], "/workspace/scratch": [] };
+function joinPath(base, name){ return base === "/" ? "/" + name : (base === "~" ? "~/" + name : base + "/" + name); }
+function parentPath(p){ if (p === "/" || p === "~" || p === "") return null; var i = p.lastIndexOf("/"); if (i <= 0) return p.charAt(0) === "/" ? "/" : "~"; return p.slice(0, i); }
+function repoDialog(m){
+  var path = m.kind === "local" ? "~/projects" : "/workspace";
+  var ov = byId("overlay");
+  var h = ['<div class="dialog" role="dialog" aria-modal="true"><h2>添加仓库</h2>',
+    '<p class="lead">该机器上的绝对路径。普通目录也可以登记；在机器上 git init 之后就能从它切出 worktree。</p>',
+    '<div class="fields"><div class="field"><label for="f_path">仓库目录</label><input id="f_path" value="' + esc(path) + '"></div></div>',
+    '<div class="dirs" id="pickList"></div>',
+    '<div class="foot"><button type="button" class="btn" data-act="cancel">取消</button><button type="button" class="btn btn-primary" data-act="ok">使用这个目录</button></div></div>'];
+  ov.innerHTML = h.join(""); ov.hidden = false;
+  function drawList(){
+    var kids = TREE[path], rows = [], up = parentPath(path);
+    if (up !== null) rows.push('<button type="button" data-up="1">' + ICON.folder + "上一层</button>");
+    if (kids === undefined) rows.push('<div class="empty">没有匹配的子目录。</div>');
+    else if (!kids.length) rows.push('<div class="empty">这个目录下没有子目录。</div>');
+    else kids.forEach(function(k){ rows.push('<button type="button" data-dir="' + esc(k) + '">' + ICON.folder + esc(k) + "</button>"); });
+    ov.querySelector("#pickList").innerHTML = rows.join("");
+  }
+  drawList();
+  ov.querySelector("#pickList").addEventListener("click", function(e){
+    var d = e.target.closest("[data-dir]");
+    if (d) { path = joinPath(path, d.getAttribute("data-dir")); ov.querySelector("#f_path").value = path; drawList(); return; }
+    if (e.target.closest("[data-up]")) { var up = parentPath(path); if (up !== null) { path = up; ov.querySelector("#f_path").value = path; drawList(); } }
+  });
+  ov.querySelector("#f_path").addEventListener("input", function(e){ path = e.target.value; drawList(); });
+  ov.onclick = function(e){
+    if (e.target === ov) { ov.hidden = true; ov.innerHTML = ""; return; }
+    var b = e.target.closest("[data-act]"); if (!b) return;
+    var a = b.getAttribute("data-act");
+    if (a === "cancel") { ov.hidden = true; ov.innerHTML = ""; return; }
+    if (a === "ok"){
+      var final = (ov.querySelector("#f_path").value || "").trim();
+      ov.hidden = true; ov.innerHTML = "";
+      if (!final) { toast("请填写仓库目录"); return; }
+      if (m.repos.some(function(r){ return r.path === final; })) { toast("这个目录已经登记"); return; }
+      var parts = final.replace(/\/+$/, "").split("/");
+      var name = parts[parts.length - 1] || m.title;
+      m.repos.push({ name: name, path: final, git: false, open: false, worktrees: [] });
+      render(); toast("已登记 " + name + "；还不是 git 仓库");
+    }
+  };
+  ov.onkeydown = function(e){ if (e.key === "Escape") { ov.hidden = true; ov.innerHTML = ""; } };
+}
+function connectMachine(m){
+  m.status = "connecting"; m.progress = 8; m.progressText = "检查远端环境…"; render();
+  var steps = [["复用已在运行的 agent 0.0.3", 38], ["上传 agent 到机器…", 72], ["启动 agent…", 92]], i = 0;
+  var t = setInterval(function(){
+    if (i < steps.length) { m.progressText = steps[i][0]; m.progress = steps[i][1]; i++; render(); }
+    else { clearInterval(t); m.status = "ready"; render(); toast("已连接 " + m.title); }
+  }, 520);
+}
+function addMachine(v){ var m = { id: "m" + (++uid), title: v.title || v.target, kind: "ssh", status: "idle", meta: v.target + (v.port ? " · SSH " + v.port : ""), repos: [] }; state.machines.push(m); openMap[m.id] = true; render(); connectMachine(m); }
+function removeWt(r, w){ r.worktrees = r.worktrees.filter(function(x){ return x !== w; }); render(); toast("已移除 worktree " + w.name); }
+byId("machines").addEventListener("click", function(e){
+  var card = e.target.closest(".card"); if (!card) return;
+  var m = findMachine(card.dataset.id); if (!m) return;
+  var btn = e.target.closest("[data-act]"); var act = btn ? btn.getAttribute("data-act") : null;
+  if (act === "refresh" || act === "noop") return;
+  if (act === "addRepo"){ repoDialog(m); return; }
+  if (act === "menu"){ openMenu(btn, [
+    { label: m.status === "ready" ? "断开" : "连接", run: function(){ if (m.status === "ready") { m.status = "disconnected"; render(); toast("已断开 " + m.title); } else connectMachine(m); } },
+    { label: "移除机器", danger: true, run: function(){ dialog({ title: "移除机器？", lead: "这台机器的仓库登记会一起删除，机器上的 worktree 与分支不受影响。", okText: "移除", danger: true, onOk: function(){ state.machines = state.machines.filter(function(x){ return x !== m; }); render(); toast("已移除机器 " + m.title); } }); } } ]); return; }
+  if (act === "conn"){ if (m.status === "ready") { m.status = "disconnected"; render(); toast("已断开 " + m.title); } else connectMachine(m); return; }
+  if (act === "repoMenu"){ var r = findRepo(m, btn.dataset.repo); if (!r) return; openMenu(btn, [ { label: "移除仓库登记", danger: true, run: function(){ dialog({ title: "移除仓库登记？", lead: "只会删除本地登记，并关闭它的目录工作区；机器上的文件和 worktree 都不受影响。", okText: "移除", danger: true, onOk: function(){ m.repos = m.repos.filter(function(x){ return x !== r; }); render(); toast("已移除仓库登记 " + r.name); } }); } } ]); return; }
+  if (act === "newWorktree"){ var repo = findRepo(m, btn.dataset.repo); if (!repo || !repo.git) return; dialog({ title: "新建 worktree", lead: "从 " + repo.name + " 切出一个新的检出。", fields: [ { key: "name", label: "worktree 名称", placeholder: "feature-x", hint: "分支名会变成 worktree/<名称>，名称不可重复。" }, { key: "path", label: "检出目录", placeholder: repo.path + "/feature-x", hint: "留空则使用默认路径。" } ], okText: "创建", onOk: function(v){ if (!v.name) return; repo.worktrees.push({ name: v.name, branch: "worktree/" + v.name, path: v.path || (repo.path.replace(/\/$/, "") + "/" + v.name), adopted: false, open: false }); render(); toast("已创建 worktree " + v.name); } }); return; }
+  if (act === "openRepo" || act === "closeRepo"){ var rp = findRepo(m, btn.dataset.repo); if (rp) { rp.open = act === "openRepo"; render(); toast((rp.open ? "已打开" : "已关闭") + "工作区 " + rp.name); } return; }
+  if (act === "openWt" || act === "closeWt"){ var ro = findRepo(m, btn.dataset.repo); var wo = ro && findWt(ro, btn.dataset.wt); if (wo) { wo.open = act === "openWt"; render(); toast((wo.open ? "已打开" : "已关闭") + "工作区 " + wo.name); } return; }
+  if (act === "wtMenu"){ var rm = findRepo(m, btn.dataset.repo); var w = rm && findWt(rm, btn.dataset.wt); if (!w) return; openMenu(btn, [
+    { label: "移除", danger: true, run: function(){ dialog({ title: "移除 worktree？", lead: (w.adopted ? "这个检出不是插件切出来的，机器上可能还有别人的活儿。" : "") + "会删除机器上的检出目录，未提交的改动会一并丢弃。", check: w.adopted ? null : "同时删除分支", okText: "移除", danger: true, onOk: function(){ removeWt(rm, w); } }); } } ]); return; }
+  if (act === "toggle"){ openMap[m.id] = !openMap[m.id]; render(); }
+});
+byId("headActions").addEventListener("click", function(e){
+  var b = e.target.closest("[data-act]"); if (!b) return;
+  var a = b.getAttribute("data-act");
+  if (a === "refresh"){ var svg = b.querySelector("svg"); svg.classList.add("spin"); setTimeout(function(){ svg.classList.remove("spin"); toast("已刷新"); }, 700); return; }
+  if (a === "addMachine"){ dialog({ title: "添加机器", lead: "通过 SSH 连接一台机器；插件会在上面安装并启动 agent。", fields: [ { key: "target", label: "SSH 目标", placeholder: "user@build-01", hint: "user@主机，或 ~/.ssh/config 里的别名。" }, { key: "port", label: "SSH 端口", placeholder: "22", hint: "留空则沿用 ssh 自己的配置。" }, { key: "identityFile", label: "私钥文件", placeholder: "~/.ssh/id_ed25519" }, { key: "token", label: "访问令牌", placeholder: "访问令牌" }, { key: "title", label: "显示名称", placeholder: "build-01" } ], okText: "连接", onOk: function(v){ if (!v.target) { toast("请填写 SSH 目标"); return; } addMachine(v); } }); }
+});
+document.body.setAttribute("data-ds-dark-theme", "");
+render();
+})();
+</script>
+</body>
+</html>
