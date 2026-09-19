@@ -52,6 +52,15 @@ impl Which {
             Which::Err => "stderr",
         }
     }
+
+    /// The stream one wire name selects, or `None` for a name it does not define.
+    fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "stdout" => Some(Which::Out),
+            "stderr" => Some(Which::Err),
+            _ => None,
+        }
+    }
 }
 
 /// The subprocess methods the daemon serves, one per `sp.*` wire method.
@@ -230,15 +239,15 @@ impl SubprocessBackend {
     /// Read one collected stream from a whole-stream byte offset.
     pub fn read_output(&self, proc_id: &str, stream: &str, from_byte: u64) -> Result<Value> {
         let managed = self.require(proc_id)?;
-        let buffer = match stream {
-            "stdout" => managed.stdout.as_ref(),
-            "stderr" => managed.stderr.as_ref(),
-            other => {
-                return Err(Failure::invalid_params(
-                    "sp.readOutput",
-                    format!("\"stream\" must be \"stdout\" or \"stderr\", got \"{other}\""),
-                ))
-            }
+        let which = Which::from_name(stream).ok_or_else(|| {
+            Failure::invalid_params(
+                "sp.readOutput",
+                format!("\"stream\" must be \"stdout\" or \"stderr\", got \"{stream}\""),
+            )
+        })?;
+        let buffer = match which {
+            Which::Out => managed.stdout.as_ref(),
+            Which::Err => managed.stderr.as_ref(),
         };
         let buffer = buffer.ok_or_else(|| {
             Failure::new(
