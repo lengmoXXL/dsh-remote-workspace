@@ -46,6 +46,9 @@ export async function resolveLocalPath(path: string): Promise<string> {
 
 /**
  * Read one path's type.
+ *
+ * A symlink reports what it resolves to, because every caller is asking what a
+ * workspace would run in. The listing below answers the other question.
  * @param path - the absolute path to probe.
  * @returns the type, or undefined when nothing is there.
  */
