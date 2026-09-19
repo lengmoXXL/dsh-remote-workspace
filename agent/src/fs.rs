@@ -663,12 +663,6 @@ fn read_basis(verb: &str, path: &Path, size: u64) -> Option<String> {
 /// Read a whole file for editing, rejecting binary content.
 fn read_for_edit(verb: &str, path: &Path) -> Result<EditSource> {
     let bytes = read_all_bytes(verb, path)?;
-    if bytes.contains(&0) {
-        return Err(Failure::new(
-            "FS_NOT_TEXT",
-            format!("cannot {verb} \"{}\": binary file", path.display()),
-        ));
-    }
     let raw = decode_text(verb, path, &bytes)?;
     let crlf = detect_crlf(&raw);
     Ok(EditSource {
