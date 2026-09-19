@@ -21,9 +21,8 @@
  * @module dsh-remote-workspace/models/autoconnect
  */
 
-import type { NodeId } from '../storage/nodes.ts'
+import type { NodeId, NodeRecord } from '../storage/nodes.ts'
 import type { NodeConnections } from './machines.ts'
-import type { NodeRecord } from '../storage/nodes.ts'
 
 /** How many times one machine is attempted before the startup pass gives up on it. */
 const ATTEMPTS = 3
