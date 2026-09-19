@@ -227,6 +227,14 @@ struct ManagedTerminal {
 }
 
 impl ManagedTerminal {
+    /// The refusal for input or a resize that arrives after the session ended.
+    fn exited(&self) -> Failure {
+        Failure::new(
+            "SP_TERMINAL_FAILED",
+            format!("terminal {} has exited", self.pid),
+        )
+    }
+
     /// Deliver bytes to the terminal input.
     fn write(&self, data: &[u8]) -> Result<()> {
         if self
@@ -235,17 +243,11 @@ impl ManagedTerminal {
             .expect("terminal outcome poisoned")
             .is_some()
         {
-            return Err(Failure::new(
-                "SP_TERMINAL_FAILED",
-                format!("terminal {} has exited", self.pid),
-            ));
+            return Err(self.exited());
         }
         let guard = self.master.lock().expect("terminal master poisoned");
         let Some(fd) = *guard else {
-            return Err(Failure::new(
-                "SP_TERMINAL_FAILED",
-                format!("terminal {} has exited", self.pid),
-            ));
+            return Err(self.exited());
         };
         let mut written = 0;
         while written < data.len() {
@@ -279,17 +281,11 @@ impl ManagedTerminal {
             .expect("terminal outcome poisoned")
             .is_some()
         {
-            return Err(Failure::new(
-                "SP_TERMINAL_FAILED",
-                format!("terminal {} has exited", self.pid),
-            ));
+            return Err(self.exited());
         }
         let guard = self.master.lock().expect("terminal master poisoned");
         let Some(fd) = *guard else {
-            return Err(Failure::new(
-                "SP_TERMINAL_FAILED",
-                format!("terminal {} has exited", self.pid),
-            ));
+            return Err(self.exited());
         };
         let winsize = libc::winsize {
             ws_row: rows,
