@@ -119,6 +119,30 @@ function toFsError(error: unknown): unknown {
   return new FsError(error.data.message, error.data.code)
 }
 
+/**
+ * Ask the daemon and hand back its answer.
+ *
+ * Every remote verb maps a failure the same way, so the mapping lives here
+ * rather than at each of them: a daemon failure inside the filesystem family
+ * becomes the typed error a caller branches on, and anything else stays the
+ * transport error it is.
+ * @param deps - the routing filesystem's dependencies.
+ * @param nodeId - the machine to ask.
+ * @param call - the request to issue against the live channel.
+ * @returns the daemon's answer.
+ */
+async function ask<T>(
+  deps: RoutingFileSystemDeps,
+  nodeId: NodeId,
+  call: (channel: NodeChannel) => Promise<T>,
+): Promise<T> {
+  try {
+    return await call(requireChannel(deps, nodeId))
+  } catch (error) {
+    throw toFsError(error)
+  }
+}
+
 /** Reject an operation whose signal already fired, before any round trip. */
 function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted === true) throw new FsError('filesystem operation aborted', 'FS_ABORTED')
@@ -209,6 +233,27 @@ export function createRoutingFileSystem(deps: RoutingFileSystemDeps): FileSystem
     deps.anchors().find(anchor =>
       anchor.nodeId === nodeId && isWithin(anchor.remoteRoot, remotePath))
 
+  /**
+   * Refuse a remote mutation the per-call policy does not allow.
+   * @param nodeId - the machine the path lives on.
+   * @param remotePath - the canonical remote path about to be written.
+   * @param verb - the operation, for the message.
+   * @param policy - the per-call policy the caller resolved, when it supplied one.
+   * @throws the typed error naming the policy that refused it.
+   */
+  const requireRemoteWrite = (
+    nodeId: NodeId,
+    remotePath: string,
+    verb: 'edit' | 'write',
+    policy: SandboxExecutionPolicy | undefined,
+  ): void => {
+    if (remoteWriteAllowed(policy, remotePath, anchorFor(nodeId, remotePath)?.remoteRoot)) return
+    throw new FsError(
+      `remote ${verb} denied by the ${String(policy?.mode)} policy: ${remotePath}`,
+      'FS_SANDBOX_DENIED',
+    )
+  }
+
   const router: FileSystemContract = {
     // Delegated for the same reason as the shell executor: this provider really
     // does fence local mutations at the deployment's mode through the composed
@@ -223,15 +268,11 @@ export function createRoutingFileSystem(deps: RoutingFileSystemDeps): FileSystem
       const route = classifyPath(path, opts?.cwd, deps.anchors())
       if (route.kind === 'local') return deps.localFs.resolve(path, opts)
       if (route.kind === 'ambiguous') throw ambiguousError(route)
-      const channel = requireChannel(deps, route.nodeId)
-      try {
-        const resolved = await channel.request('fs.resolve', { path: route.remotePath })
-        return {
-          targetKey: composeKey(route.nodeId, resolved.canonicalPath),
-          displayPath: resolved.canonicalPath,
-        }
-      } catch (error) {
-        throw toFsError(error)
+      const resolved = await ask(deps, route.nodeId, channel =>
+        channel.request('fs.resolve', { path: route.remotePath }))
+      return {
+        targetKey: composeKey(route.nodeId, resolved.canonicalPath),
+        displayPath: resolved.canonicalPath,
       }
     },
 
@@ -268,18 +309,14 @@ export function createRoutingFileSystem(deps: RoutingFileSystemDeps): FileSystem
       throwIfAborted(signal)
       const parsed = parseKey(target.targetKey)
       if (parsed.kind === 'local') return deps.localFs.stat(target, signal)
-      try {
-        const info = await requireChannel(deps, parsed.nodeId)
-          .request('fs.stat', { path: parsed.remotePath })
-        if (info === null) return undefined
-        return {
-          version: FsVersion(info.version),
-          type: info.type,
-          ...info.size === undefined ? {} : { size: info.size },
-        } satisfies FsInfo
-      } catch (error) {
-        throw toFsError(error)
-      }
+      const info = await ask(deps, parsed.nodeId, channel =>
+        channel.request('fs.stat', { path: parsed.remotePath }))
+      if (info === null) return undefined
+      return {
+        version: FsVersion(info.version),
+        type: info.type,
+        ...info.size === undefined ? {} : { size: info.size },
+      } satisfies FsInfo
     },
 
     async lstat(path, opts, signal) {
@@ -287,18 +324,14 @@ export function createRoutingFileSystem(deps: RoutingFileSystemDeps): FileSystem
       const route = classifyPath(path, opts?.cwd, deps.anchors())
       if (route.kind === 'local') return deps.localFs.lstat(path, opts, signal)
       if (route.kind === 'ambiguous') throw ambiguousError(route)
-      try {
-        const info = await requireChannel(deps, route.nodeId)
-          .request('fs.lstat', { path: route.remotePath })
-        if (info === null) return undefined
-        return {
-          version: FsVersion(info.version),
-          type: info.type,
-          ...info.size === undefined ? {} : { size: info.size },
-        } satisfies FsPathInfo
-      } catch (error) {
-        throw toFsError(error)
-      }
+      const info = await ask(deps, route.nodeId, channel =>
+        channel.request('fs.lstat', { path: route.remotePath }))
+      if (info === null) return undefined
+      return {
+        version: FsVersion(info.version),
+        type: info.type,
+        ...info.size === undefined ? {} : { size: info.size },
+      } satisfies FsPathInfo
     },
 
     async readText(target, signal) {
@@ -330,52 +363,40 @@ export function createRoutingFileSystem(deps: RoutingFileSystemDeps): FileSystem
       throwIfAborted(signal)
       const parsed = parseKey(target.targetKey)
       if (parsed.kind === 'local') return deps.localFs.readBytes(target, signal, maxBytes)
-      try {
-        const bytes = await requireChannel(deps, parsed.nodeId)
-          .request('fs.readBytes', { path: parsed.remotePath, maxBytes })
-        return new Uint8Array(Buffer.from(bytes.data, 'base64'))
-      } catch (error) {
-        throw toFsError(error)
-      }
+      const bytes = await ask(deps, parsed.nodeId, channel =>
+        channel.request('fs.readBytes', { path: parsed.remotePath, maxBytes }))
+      return new Uint8Array(Buffer.from(bytes.data, 'base64'))
     },
 
     async readByteRange(target, range, signal) {
       throwIfAborted(signal)
       const parsed = parseKey(target.targetKey)
       if (parsed.kind === 'local') return deps.localFs.readByteRange(target, range, signal)
-      try {
-        const bytes = await requireChannel(deps, parsed.nodeId)
-          .request('fs.readByteRange', {
-            path: parsed.remotePath,
-            offset: range.offset,
-            length: range.length,
-          })
-        return new Uint8Array(Buffer.from(bytes.data, 'base64'))
-      } catch (error) {
-        throw toFsError(error)
-      }
+      const bytes = await ask(deps, parsed.nodeId, channel =>
+        channel.request('fs.readByteRange', {
+          path: parsed.remotePath,
+          offset: range.offset,
+          length: range.length,
+        }))
+      return new Uint8Array(Buffer.from(bytes.data, 'base64'))
     },
 
     async listDir(target, signal) {
       throwIfAborted(signal)
       const parsed = parseKey(target.targetKey)
       if (parsed.kind === 'local') return deps.localFs.listDir(target, signal)
-      try {
-        const entries = await requireChannel(deps, parsed.nodeId)
-          .request('fs.listDir', { path: parsed.remotePath })
-        return entries.map((entry): FsDirEntry => ({
-          name: entry.name,
-          type: entry.type,
-          target: {
-            targetKey: composeKey(parsed.nodeId, entry.target.canonicalPath),
-            displayPath: entry.target.canonicalPath,
-          },
-          ...entry.version === undefined ? {} : { version: FsVersion(entry.version) },
-          ...entry.size === undefined ? {} : { size: entry.size },
-        }))
-      } catch (error) {
-        throw toFsError(error)
-      }
+      const entries = await ask(deps, parsed.nodeId, channel =>
+        channel.request('fs.listDir', { path: parsed.remotePath }))
+      return entries.map((entry): FsDirEntry => ({
+        name: entry.name,
+        type: entry.type,
+        target: {
+          targetKey: composeKey(parsed.nodeId, entry.target.canonicalPath),
+          displayPath: entry.target.canonicalPath,
+        },
+        ...entry.version === undefined ? {} : { version: FsVersion(entry.version) },
+        ...entry.size === undefined ? {} : { size: entry.size },
+      }))
     },
 
     async writeText(target, content, expected, signal, sandboxPolicy) {
@@ -384,32 +405,22 @@ export function createRoutingFileSystem(deps: RoutingFileSystemDeps): FileSystem
       if (parsed.kind === 'local') {
         return deps.localFs.writeText(target, content, expected, signal, sandboxPolicy)
       }
-      const anchor = anchorFor(parsed.nodeId, parsed.remotePath)
-      if (!remoteWriteAllowed(sandboxPolicy, parsed.remotePath, anchor?.remoteRoot)) {
-        throw new FsError(
-          `remote write denied by the ${String(sandboxPolicy?.mode)} policy: ${parsed.remotePath}`,
-          'FS_SANDBOX_DENIED',
-        )
-      }
-      try {
-        const outcome = await requireChannel(deps, parsed.nodeId).request('fs.writeText', {
-          path: parsed.remotePath,
-          content,
-          ...expected === undefined ? {} : {
-            expected: expected.kind === 'createIfAbsent'
-              ? { kind: 'createIfAbsent' as const }
-              : { kind: 'replaceIfVersion' as const, version: expected.version as string },
-          },
-        })
-        return {
-          operation: outcome.operation,
-          version: FsVersion(outcome.version),
-          before: outcome.before,
-          after: outcome.after,
-        } satisfies FsWriteOutcome
-      } catch (error) {
-        throw toFsError(error)
-      }
+      requireRemoteWrite(parsed.nodeId, parsed.remotePath, 'write', sandboxPolicy)
+      const outcome = await ask(deps, parsed.nodeId, channel => channel.request('fs.writeText', {
+        path: parsed.remotePath,
+        content,
+        ...expected === undefined ? {} : {
+          expected: expected.kind === 'createIfAbsent'
+            ? { kind: 'createIfAbsent' as const }
+            : { kind: 'replaceIfVersion' as const, version: expected.version as string },
+        },
+      }))
+      return {
+        operation: outcome.operation,
+        version: FsVersion(outcome.version),
+        before: outcome.before,
+        after: outcome.after,
+      } satisfies FsWriteOutcome
     },
 
     async editText(target, edit: FsEditRequest, expected, signal, sandboxPolicy) {
@@ -418,27 +429,17 @@ export function createRoutingFileSystem(deps: RoutingFileSystemDeps): FileSystem
       if (parsed.kind === 'local') {
         return deps.localFs.editText(target, edit, expected, signal, sandboxPolicy)
       }
-      const anchor = anchorFor(parsed.nodeId, parsed.remotePath)
-      if (!remoteWriteAllowed(sandboxPolicy, parsed.remotePath, anchor?.remoteRoot)) {
-        throw new FsError(
-          `remote edit denied by the ${String(sandboxPolicy?.mode)} policy: ${parsed.remotePath}`,
-          'FS_SANDBOX_DENIED',
-        )
-      }
-      try {
-        const outcome = await requireChannel(deps, parsed.nodeId).request('fs.editText', {
-          path: parsed.remotePath,
-          edit: { oldString: edit.oldString, newString: edit.newString, replaceAll: edit.replaceAll },
-          ...expected === undefined ? {} : { expected: { version: expected.version as string } },
-        })
-        return {
-          version: FsVersion(outcome.version),
-          before: outcome.before,
-          after: outcome.after,
-        } satisfies FsEditOutcome
-      } catch (error) {
-        throw toFsError(error)
-      }
+      requireRemoteWrite(parsed.nodeId, parsed.remotePath, 'edit', sandboxPolicy)
+      const outcome = await ask(deps, parsed.nodeId, channel => channel.request('fs.editText', {
+        path: parsed.remotePath,
+        edit: { oldString: edit.oldString, newString: edit.newString, replaceAll: edit.replaceAll },
+        ...expected === undefined ? {} : { expected: { version: expected.version as string } },
+      }))
+      return {
+        version: FsVersion(outcome.version),
+        before: outcome.before,
+        after: outcome.after,
+      } satisfies FsEditOutcome
     },
   }
 
