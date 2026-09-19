@@ -89,13 +89,13 @@ function fakeTerminal(refuseResize = false): FakeTerminal {
   const writes: string[] = []
   const resizes: number[][] = []
   let terminations = 0
-  let settle: (outcome: TtyOutcome) => void = () => {}
-  const done = new Promise<TtyOutcome>((resolve) => { settle = resolve })
+  let resolveOutcome: (outcome: TtyOutcome) => void = () => {}
+  const done = new Promise<TtyOutcome>((resolve) => { resolveOutcome = resolve })
   return {
     writes,
     resizes,
     terminations: () => terminations,
-    exit: outcome => settle(outcome),
+    exit: outcome => resolveOutcome(outcome),
     emit: (chunk) => { output.write(Buffer.from(chunk, 'utf8')) },
     handle: {
       pid: 4242,
@@ -163,6 +163,9 @@ function fakeSocket(): FakeSocket {
   }
 }
 
+/** Let the bridge's asynchronous forwarding run. */
+const settle = (): Promise<void> => new Promise(resolve => setImmediate(resolve))
+
 /** A host context whose terminal seam is the given provider. */
 function ttyContext(spawn: (request: TtySpawnRequest) => Promise<TtyHandle>, cwd: string): Context {
   const sessions = { get: () => ({ header: { cwd } }) }
@@ -208,7 +211,7 @@ async function opened(options: {
   const registry = terminalRegistry(spawn)
   attachTerminal(ttyContext(spawn, options.cwd ?? '/w/live'), registry, browser.socket)
   browser.send({ t: 'open', sessionId: 'session-1', cols: options.cols ?? 80, rows: options.rows ?? 24 })
-  await new Promise(resolve => setImmediate(resolve))
+  await settle()
   return { terminal, browser, requests, registry }
 }
 
@@ -242,7 +245,7 @@ test('an unknown Session is answered with an error frame rather than a terminal'
     browser.socket,
   )
   browser.send({ t: 'open', sessionId: 'session-1', cols: 80, rows: 24 })
-  await new Promise(resolve => setImmediate(resolve))
+  await settle()
   assert.equal(requests.length, 0, 'nothing is allocated for a Session nobody knows')
   // The browser reads the refusal's words, so the frame carries the reason
   // rather than the typed code the host branches on.
@@ -255,17 +258,17 @@ test('an unknown Session is answered with an error frame rather than a terminal'
 test('keystrokes reach the terminal and its output reaches the browser', async () => {
   const { terminal, browser } = await opened()
   browser.send({ t: 'input', data: 'ls\r' })
-  await new Promise(resolve => setImmediate(resolve))
+  await settle()
   assert.deepEqual(terminal.writes, ['ls\r'])
   terminal.emit('total 0\n')
-  await new Promise(resolve => setImmediate(resolve))
+  await settle()
   assert.ok(browser.sent.some(entry => Buffer.isBuffer(entry) && entry.toString('utf8') === 'total 0\n'))
 })
 
 test('a resize the provider accepts is reported live', async () => {
   const { terminal, browser } = await opened()
   browser.send({ t: 'resize', cols: 100, rows: 30 })
-  await new Promise(resolve => setImmediate(resolve))
+  await settle()
   assert.deepEqual(terminal.resizes, [[100, 30]])
   assert.deepEqual(browser.frames.at(-1), { t: 'size', cols: 100, rows: 30, live: true })
 })
@@ -273,7 +276,7 @@ test('a resize the provider accepts is reported live', async () => {
 test('a resize the provider refuses is reported stale instead of failing the terminal', async () => {
   const { terminal, browser } = await opened({ refuseResize: true })
   browser.send({ t: 'resize', cols: 100, rows: 30 })
-  await new Promise(resolve => setImmediate(resolve))
+  await settle()
   assert.deepEqual(terminal.resizes, [])
   assert.deepEqual(browser.frames.at(-1), { t: 'size', cols: 100, rows: 30, live: false })
 })
@@ -282,7 +285,7 @@ test('a browser that goes away detaches the terminal instead of ending it', asyn
   const { terminal, browser, registry } = await opened()
   assert.deepEqual(registry.listFor('session-1').map(view => view.id), ['t1'])
   browser.close()
-  await new Promise(resolve => setImmediate(resolve))
+  await settle()
 
   assert.equal(terminal.terminations(), 0)
   // The tab may come back, so the shell stays addressable; `detached` says
@@ -294,7 +297,7 @@ test('a browser that goes away detaches the terminal instead of ending it', asyn
 test('a detached terminal outlives the socket, and the process exiting releases it', async () => {
   const { terminal, browser, registry } = await opened()
   browser.close()
-  await new Promise(resolve => setImmediate(resolve))
+  await settle()
   // No valve is configured, so a socket leaving is the only thing that
   // happened: the shell is still there, addressable.
   assert.equal(terminal.terminations(), 0)
@@ -302,7 +305,7 @@ test('a detached terminal outlives the socket, and the process exiting releases 
 
   // The process exits while nobody watches: that is what ends the entry.
   terminal.exit({ exitCode: 0, signal: null })
-  await new Promise(resolve => setImmediate(resolve))
+  await settle()
 
   assert.equal(terminal.terminations(), 1)
   assert.deepEqual(registry.listFor('session-1'), [])
@@ -315,18 +318,18 @@ test('an attach frame reattaches to a detached terminal and replays its output',
   const first = fakeSocket()
   attachTerminal(ctx, registry, first.socket)
   first.send({ t: 'open', sessionId: 'session-1', cols: 80, rows: 24 })
-  await new Promise(resolve => setImmediate(resolve))
+  await settle()
   terminal.emit('history\n')
-  await new Promise(resolve => setImmediate(resolve))
+  await settle()
 
   // What a page reload looks like from the host: the socket closes, and a new
   // socket comes back with the id it remembers.
   first.close()
-  await new Promise(resolve => setImmediate(resolve))
+  await settle()
   const second = fakeSocket()
   attachTerminal(ctx, registry, second.socket)
   second.send({ t: 'attach', sessionId: 'session-1', id: 't1', cols: 90, rows: 30 })
-  await new Promise(resolve => setImmediate(resolve))
+  await settle()
 
   assert.deepEqual(second.frames, [
     { t: 'ready', pid: 4242, cwd: '/w/live', id: 't1', label: 'Terminal 1' },
@@ -348,7 +351,7 @@ test('an attach frame for a terminal that is gone answers with a readable error'
   attachTerminal(ttyContext(async () => terminal.handle, '/w/live'), registry, browser.socket)
 
   browser.send({ t: 'attach', sessionId: 'session-1', id: 't9', cols: 80, rows: 24 })
-  await new Promise(resolve => setImmediate(resolve))
+  await settle()
 
   const frames = browser.frames as { readonly t: string; readonly message?: string }[]
   assert.deepEqual(frames.map(frame => frame.t), ['error'])
@@ -362,14 +365,14 @@ test('an attach frame cannot reach a terminal another Session owns', async () =>
   const first = fakeSocket()
   attachTerminal(ctx, registry, first.socket)
   first.send({ t: 'open', sessionId: 'session-1', cols: 80, rows: 24 })
-  await new Promise(resolve => setImmediate(resolve))
+  await settle()
 
   // The id is known, but it belongs to another Session: the attach is refused
   // instead of replaying the shell, so nothing crosses the boundary.
   const second = fakeSocket()
   attachTerminal(ctx, registry, second.socket)
   second.send({ t: 'attach', sessionId: 'session-2', id: 't1', cols: 80, rows: 24 })
-  await new Promise(resolve => setImmediate(resolve))
+  await settle()
 
   const frames = second.frames as { readonly t: string; readonly message?: string }[]
   assert.deepEqual(frames.map(frame => frame.t), ['error'])
@@ -385,10 +388,10 @@ test('a detached terminal is released when its configured valve expires', async 
   const browser = fakeSocket()
   attachTerminal(ttyContext(async () => terminal.handle, '/w/live'), registry, browser.socket)
   browser.send({ t: 'open', sessionId: 'session-1', cols: 80, rows: 24 })
-  await new Promise(resolve => setImmediate(resolve))
+  await settle()
 
   browser.close()
-  await new Promise(resolve => setImmediate(resolve))
+  await settle()
   assert.equal(terminal.terminations(), 0)
 
   await new Promise(resolve => { setTimeout(resolve, 80) })
@@ -399,14 +402,14 @@ test('a detached terminal is released when its configured valve expires', async 
 test('a terminal that exits says so and closes the socket', async () => {
   const { terminal, browser, registry } = await opened()
   terminal.exit({ exitCode: 0, signal: null })
-  await new Promise(resolve => setImmediate(resolve))
+  await settle()
   assert.deepEqual(browser.frames.at(-1), { t: 'exit', code: 0, signal: null })
   assert.equal(browser.closed()?.code, 1000)
 
   // The socket close this produces is what detaches an already-exited entry,
   // and the registry releases it at once rather than keeping a corpse.
   browser.close()
-  await new Promise(resolve => setImmediate(resolve))
+  await settle()
   assert.equal(terminal.terminations(), 1)
   assert.deepEqual(registry.listFor('session-1'), [])
 })
