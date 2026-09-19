@@ -96,7 +96,7 @@ function fakeTerminal(refuseResize = false): FakeTerminal {
     resizes,
     terminations: () => terminations,
     exit: outcome => resolveOutcome(outcome),
-    emit: (chunk) => { output.write(Buffer.from(chunk, 'utf8')) },
+    emit: chunk => output.write(Buffer.from(chunk, 'utf8')),
     handle: {
       pid: 4242,
       output,
