@@ -8,10 +8,6 @@
  * because branch and cleanliness are live facts read from the daemon on every
  * listing and would be stale the moment they were written down.
  *
- * The document lives beside the node registry under the harness home and is
- * replaced atomically under a cross-process lock, so two harness processes
- * never interleave a read-render-commit cycle.
- *
  * @module dsh-remote-workspace/storage/repos
  */
 
@@ -38,9 +34,9 @@ export type RepoId = Branded<'RepoId'>
 /**
  * Admit a string as a repository id.
  *
- * Called only where an untrusted string first becomes one: a parsed document,
- * a route segment, or a tool argument. Every later hop carries the type.
- * @param value - the string the parser produced.
+ * Called where a string first becomes an id: a field a request carried. Every
+ * later hop carries the type.
+ * @param value - the string that request named.
  * @returns the same string, branded.
  */
 export function asRepoId(value: string): RepoId {

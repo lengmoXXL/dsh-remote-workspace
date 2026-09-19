@@ -1,11 +1,9 @@
 /**
  * The durable record of the remote machines a user has configured.
  *
- * The document lives under the harness home and is replaced atomically under a
- * cross-process lock, so two harness processes never interleave a read-render
- * -commit cycle. Records carry the node's shared secret; every projection that
- * leaves this module drops it, and {@link toNodeView} is the only supported way
- * to produce one.
+ * Records carry the node's shared secret; every projection that leaves this
+ * module drops it, and {@link toNodeView} is the only supported way to produce
+ * one.
  *
  * @module dsh-remote-workspace/storage/nodes
  */
