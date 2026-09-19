@@ -627,57 +627,55 @@ export function RemoteWorktreesSection(props: SectionProps) {
                         // already exists is registered locally, so changing its
                         // state keeps working while the machine is away.
                         const cannotOpen = entry.error !== undefined && directory === undefined
+                        const directoryLabel = controlLabel(
+                          t,
+                          directory?.open === true ? 'closeWorktree' : 'openWorktree',
+                          repo.name,
+                        )
+                        const worktreeLabel = controlLabel(t, 'newWorktree', repo.name)
                         return (
                           <div key={repo.repoId} className={css.repoCard}>
                             <div className={css.row}>
                               <span className={css.leading}><IconFolderOpen16 /></span>
                               <span className={css.repoName}>{repo.name}</span>
                               <span className={css.trailing}>
-                                  <Button
-                                    size="sm"
-                                    icon={directory?.open === true
-                                      ? <IconFolderClose16 />
-                                      : <IconFolderOpenOutline16 />}
-                                    disabled={busy || cannotOpen}
-                                    aria-label={controlLabel(
-                                      t,
-                                      directory?.open === true ? 'closeWorktree' : 'openWorktree',
-                                      repo.name,
-                                    )}
-                                    title={controlLabel(
-                                      t,
-                                      directory?.open === true ? 'closeWorktree' : 'openWorktree',
-                                      repo.name,
-                                    )}
-                                    onClick={() => void mutate(() => (
-                                      directory?.open === true
-                                        ? props.closeDirectory(repo.repoId)
-                                        : props.openDirectory(repo.repoId)
-                                    ))}
-                                  />
-                                  <Button
-                                    size="sm"
-                                    icon={<IconBranchOutline16 />}
-                                    disabled={busy || !entry.git}
-                                    aria-label={controlLabel(t, 'newWorktree', repo.name)}
-                                    title={controlLabel(t, 'newWorktree', repo.name)}
-                                    onClick={() => setDialog({ kind: 'worktree', repo })}
-                                  />
-                                  <ActionsMenu
-                                    name={repo.name}
-                                    busy={busy}
-                                    t={t}
-                                    actions={[{
-                                      id: 'forgetRepository',
-                                      label: t('forgetRepository'),
-                                      danger: true,
-                                      run: () => confirm({
-                                        titleKey: 'removeRepositoryTitle',
-                                        bodyKey: 'removeRepositoryBody',
-                                        run: () => props.removeRepo(repo.repoId),
-                                      }),
-                                    }]}
-                                  />
+                                <Button
+                                  size="sm"
+                                  icon={directory?.open === true
+                                    ? <IconFolderClose16 />
+                                    : <IconFolderOpenOutline16 />}
+                                  disabled={busy || cannotOpen}
+                                  aria-label={directoryLabel}
+                                  title={directoryLabel}
+                                  onClick={() => void mutate(() => (
+                                    directory?.open === true
+                                      ? props.closeDirectory(repo.repoId)
+                                      : props.openDirectory(repo.repoId)
+                                  ))}
+                                />
+                                <Button
+                                  size="sm"
+                                  icon={<IconBranchOutline16 />}
+                                  disabled={busy || !entry.git}
+                                  aria-label={worktreeLabel}
+                                  title={worktreeLabel}
+                                  onClick={() => setDialog({ kind: 'worktree', repo })}
+                                />
+                                <ActionsMenu
+                                  name={repo.name}
+                                  busy={busy}
+                                  t={t}
+                                  actions={[{
+                                    id: 'forgetRepository',
+                                    label: t('forgetRepository'),
+                                    danger: true,
+                                    run: () => confirm({
+                                      titleKey: 'removeRepositoryTitle',
+                                      bodyKey: 'removeRepositoryBody',
+                                      run: () => props.removeRepo(repo.repoId),
+                                    }),
+                                  }]}
+                                />
                               </span>
                             </div>
                             {worktrees.length === 0 && !entry.git ? null : (

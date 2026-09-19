@@ -56,19 +56,16 @@ const ICON_NAMES = [
  * @returns the module the bundle's `require` resolves the library to.
  */
 function primitivesStub(): Record<string, unknown> {
-  const passthrough = (tag: string) => (props: { children?: ReactNode }) =>
-    createElement(tag, null, props.children)
-  // An icon-only control carries its name as an attribute rather than as text,
-  // which is what the section's own assertions read.
-  const button = (props: { children?: ReactNode; title?: string; 'aria-label'?: string }) =>
-    createElement('button', { title: props.title, 'aria-label': props['aria-label'] }, props.children)
   const stub: Record<string, unknown> = {
-    Button: button,
+    // An icon-only control carries its name as an attribute rather than as text,
+    // which is what the section's own assertions read.
+    Button: (props: { children?: ReactNode; title?: string; 'aria-label'?: string }) =>
+      createElement('button', { title: props.title, 'aria-label': props['aria-label'] }, props.children),
     Input: () => createElement('input', null),
     StateDot: () => createElement('span', null),
     Menu: (props: { anchor?: ReactNode }) => createElement('span', null, props.anchor),
     Switch: () => createElement('span', null),
-    Tag: passthrough('span'),
+    Tag: (props: { children?: ReactNode }) => createElement('span', null, props.children),
     DisclosureRow: (props: { title: string; children?: ReactNode }) =>
       createElement('div', null, props.title, props.children),
     Modal: (props: { open: boolean; title: string; children?: ReactNode }) =>
