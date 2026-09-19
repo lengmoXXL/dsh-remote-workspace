@@ -402,8 +402,8 @@ fn read_spawn_spec(params: &Value, method: &str) -> Result<SpawnSpec> {
         argv: read_argv(source, method)?,
         cwd: require_string(source, "cwd", method)?.to_string(),
         stdin: read_stdin_mode(source.get("stdin"), method)?,
-        stdout: read_output_mode(source.get("stdout"), method)?,
-        stderr: read_output_mode(source.get("stderr"), method)?,
+        stdout: read_output_mode(source.get("stdout"), "stdout", method)?,
+        stderr: read_output_mode(source.get("stderr"), "stderr", method)?,
         grace_ms,
         env: read_environment(source.get("env"), method)?,
     })
@@ -441,25 +441,17 @@ fn read_dimension(source: &Map<String, Value>, field: &str, method: &str) -> Res
 
 /// Read a non-empty argv array.
 fn read_argv(source: &Map<String, Value>, method: &str) -> Result<Vec<String>> {
+    let complaint =
+        || Failure::invalid_params(method, "\"argv\" must be a non-empty array of strings");
     let Some(values) = source.get("argv").and_then(Value::as_array) else {
-        return Err(Failure::invalid_params(
-            method,
-            "\"argv\" must be a non-empty array of strings",
-        ));
+        return Err(complaint());
     };
     if values.is_empty() {
-        return Err(Failure::invalid_params(
-            method,
-            "\"argv\" must be a non-empty array of strings",
-        ));
+        return Err(complaint());
     }
     values
         .iter()
-        .map(|value| {
-            value.as_str().map(str::to_string).ok_or_else(|| {
-                Failure::invalid_params(method, "\"argv\" must be a non-empty array of strings")
-            })
-        })
+        .map(|value| value.as_str().map(str::to_string).ok_or_else(complaint))
         .collect()
 }
 
@@ -485,7 +477,13 @@ fn read_stdin_mode(value: Option<&Value>, method: &str) -> Result<StdinMode> {
 }
 
 /// Read and validate an output disposition.
-fn read_output_mode(value: Option<&Value>, method: &str) -> Result<OutputMode> {
+fn read_output_mode(value: Option<&Value>, field: &str, method: &str) -> Result<OutputMode> {
+    let complaint = || {
+        Failure::invalid_params(
+            method,
+            format!("\"{field}\" must be \"inherit\", \"pipe\", or {{ maxBytes }}"),
+        )
+    };
     match value {
         Some(Value::String(mode)) if mode == "inherit" => Ok(OutputMode::Inherit),
         Some(Value::String(mode)) if mode == "pipe" => Ok(OutputMode::Pipe),
@@ -493,20 +491,12 @@ fn read_output_mode(value: Option<&Value>, method: &str) -> Result<OutputMode> {
             let max_bytes = record
                 .get("maxBytes")
                 .and_then(Value::as_u64)
-                .ok_or_else(|| {
-                    Failure::invalid_params(
-                        method,
-                        "\"stdout\" and \"stderr\" must be \"inherit\" or { maxBytes }",
-                    )
-                })?;
+                .ok_or_else(complaint)?;
             Ok(OutputMode::Collect {
                 max_bytes: max_bytes as usize,
             })
         }
-        _ => Err(Failure::invalid_params(
-            method,
-            "\"stdout\" and \"stderr\" must be \"inherit\" or { maxBytes }",
-        )),
+        _ => Err(complaint()),
     }
 }
 
