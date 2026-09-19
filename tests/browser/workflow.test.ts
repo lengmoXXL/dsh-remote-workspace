@@ -36,6 +36,7 @@ import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { promisify } from 'node:util'
 import { en, zh } from '../../src/plugin/client/locales.ts'
+import { en as terminalEn, zh as terminalZh } from '../../src/plugin/client/terminal/locales.ts'
 import {
   clickByText,
   clickInDialog,
@@ -77,6 +78,20 @@ function exact(...keys: Key[]): RegExp {
 function controlFor(name: string, key: Key): RegExp {
   const prefix = [zh[key], en[key]].map(escape).join('|')
   return new RegExp(`^(?:${prefix}): ${escape(name)}$`, 'i')
+}
+
+/** The shell's own Plugins navigation label, which this plugin's dictionaries do not own. */
+const PLUGINS_NAV = /^(?:插件|Plugins)$/
+
+/**
+ * A pattern matching one label of the terminal card in either language.
+ * @param key - the card's dictionary key.
+ * @param whole - whether the label is the whole accessible name; the card's own
+ * name shares its header label with the description under it.
+ */
+function cardLabel(key: keyof typeof terminalEn, whole = true): RegExp {
+  const labels = `${terminalZh[key]}|${terminalEn[key]}`
+  return new RegExp(whole ? `^(?:${labels})$` : `(?:${labels})`)
 }
 
 /** An expression that holds when any of these labels is on screen. */
@@ -235,6 +250,18 @@ async function waitForPath(path: string, expected: 'present' | 'absent', timeout
     const exists = await stat(path).then(() => true, () => false)
     if (exists === (expected === 'present')) return
     if (Date.now() > deadline) throw new Error(`${path} was never ${expected}`)
+    await delay(200)
+  }
+}
+
+/** Poll the Host's settings document until it says one thing. */
+async function waitForSettings(instance: E2eInstance, pattern: RegExp): Promise<void> {
+  const path = join(instance.home, 'settings.yaml')
+  const deadline = Date.now() + 20_000
+  for (;;) {
+    const text = await readFile(path, 'utf8').catch(() => '')
+    if (pattern.test(text)) return
+    if (Date.now() > deadline) throw new Error(`${path} never matched ${String(pattern)}: ${text}`)
     await delay(200)
   }
 }
@@ -659,6 +686,24 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     await waitFor(page, controlsFor('addMachine', 'refresh'), 'the section toolbar')
     await waitForText(page, 'e2e daemon', 'the seeded machine row')
     await shot('01-section')
+
+    // The terminal's display preferences are this plugin's own settings, so the
+    // shell's Plugin configuration page draws them as the card this plugin
+    // contributes. A row writes into the Host's settings document — which is
+    // what the next page load reads back — so the check follows the value there
+    // rather than trusting the label that moved on screen.
+    await clickByText(page, PLUGINS_NAV)
+    await waitForText(page, terminalZh['settings.title'], 'the terminal card')
+    await clickByText(page, cardLabel('settings.title', false))
+    await waitForText(page, terminalZh['settings.fontSize'], 'the card rows')
+    await shot('01b-terminal-card')
+    await clickByText(page, cardLabel('settings.increase'))
+    await waitForText(page, '13 px', 'the font size to step')
+    await waitForSettings(instance, /dsh-remote-workspace:\n\s+fontSize: 13/)
+
+    // Back to this plugin's own section: the workflow below is managed there.
+    await clickByText(page, anyOf('title'))
+    await waitFor(page, controlsFor('addMachine', 'refresh'), 'the section toolbar')
 
     // Add a machine through the form; the host stores it under its own id.
     // The form asks for the SSH destination, two optional SSH fields, the

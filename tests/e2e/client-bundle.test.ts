@@ -140,6 +140,16 @@ function stubContext(): {
   const focused: string[] = []
   const ctx = {
     effect: (factory: () => unknown) => factory(),
+    // The settings scope is acquired softly, so the stub answers a request for
+    // it with the same context — the way the real service would arrive.
+    inject: (_deps: readonly string[], callback: (scoped: unknown) => void) => { callback(ctx) },
+    settingsScope: {
+      bind: () => ({
+        getSnapshot: () => ({ value: undefined }),
+        subscribe: () => () => {},
+        set: () => Promise.resolve(),
+      }),
+    },
     locale: {
       register: (ns: string, dictionaries: Record<string, unknown>) => {
         locales.push({ ns, dictionaries })
@@ -202,6 +212,11 @@ test('apply registers the settings section and the terminal tab', async () => {
   const body = registrations.find(entry => entry.name === 'sidebar.right.pane.tab')
   assert.equal(body?.key, 'dsh-terminal')
   assert.equal(typeof body?.component, 'function')
+  // The display preferences are a card in the Plugins settings page, keyed by
+  // the settings namespace the Host registers.
+  const card = registrations.find(entry => entry.name === 'settings.plugin.item')
+  assert.equal(card?.key, 'dsh-remote-workspace')
+  assert.equal(typeof card?.component, 'function')
   assert.deepEqual(tabs.map(tab => [tab.id, tab.kind]), [['dsh-terminal', 'terminal']])
 })
 
@@ -315,6 +330,22 @@ test('the section renders its frame with the injected face threaded through', as
   assert.match(markup, /addMachine/)
   assert.match(markup, /refresh/)
   assert.match(markup, /loading/)
+})
+
+test('the card renders its own copy from the terminal dictionary', async () => {
+  const { exports } = await loadBundle()
+  const { ctx, registrations } = stubContext()
+  ;(exports['apply'] as (ctx: unknown) => void)(ctx)
+  const component = registrations.find(entry => entry.name === 'settings.plugin.item')?.component as (props: Record<string, unknown>) => unknown
+
+  const { renderToStaticMarkup } = await import('react-dom/server')
+  const markup = renderToStaticMarkup(
+    createElement(component as never, { t: (key: string) => key }),
+  )
+
+  // Closed until it is opened, so what proves the wiring is the header.
+  assert.match(markup, /settings\.title/)
+  assert.match(markup, /settings\.description/)
 })
 
 test('the bundle carries its stylesheet inlined under hashed local names', async () => {

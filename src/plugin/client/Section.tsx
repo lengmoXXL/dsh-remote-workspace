@@ -35,7 +35,6 @@ import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-cli
 import type { RemoteWorktreesKey } from './locales.ts'
 import { NS } from './locales.ts'
 import { AddMachineDialog, AddRepoDialog, NewWorktreeDialog, reasonOf } from './dialogs.tsx'
-import { TerminalSettings } from './terminal/TerminalSettings.tsx'
 import css from './Section.module.css'
 
 /** The locale seat this section reads, including its template parameters. */
@@ -720,8 +719,6 @@ export function RemoteWorktreesSection(props: SectionProps) {
           })}
         </div>
       )}
-
-      <TerminalSettings t={t} />
 
       {dialog?.kind === 'machine' ? (
         <AddMachineDialog

@@ -38,6 +38,9 @@ import { SandboxedFileSystem } from '@deepseek-ai/dsh-fs-sandbox'
 import { LocalSubprocessRuntime } from '@deepseek-ai/dsh-subprocess-local'
 import { LocalTtyRuntime } from './local/tty.ts'
 import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
+// Type-only: the settings service merge (ctx.settings) the display namespace is
+// registered through.
+import type {} from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import { homedir } from 'node:os'
 import { join, posix } from 'node:path'
@@ -56,7 +59,9 @@ import { createAnchorStore } from './storage/anchors.ts'
 import { createNodeRegistry, LOCAL_NODE_ID } from './storage/nodes.ts'
 import type { NodeId } from './storage/nodes.ts'
 import { createRepoStore } from './storage/repos.ts'
+import { TerminalDisplaySchema } from './terminal/host/display.ts'
 import { createTerminalRegistry, type TerminalSettings } from './terminal/host/registry.ts'
+import { TERMINAL_DISPLAY_NAMESPACE } from './terminal/shared/display.ts'
 import { registerTerminalSocket } from './terminal/host/socket.ts'
 import { SOCKET_PATH } from './terminal/shared/wire.ts'
 import { registerTerminalTool } from './tools/terminal.ts'
@@ -399,6 +404,14 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   registerNodeApi(ctx, { registry, repos, connections, worktrees, worktreeRoot, terminals })
   registerTerminalSocket(ctx, SOCKET_PATH, terminals)
   registerTerminalTool(ctx, terminals)
+
+  // The terminal's display preferences are this plugin's own settings: the
+  // browser half binds a scope to the namespace and draws the card that edits
+  // it in the Plugins settings page. Acquired softly — a deployment without the
+  // settings service still gets a terminal, drawn with the schema's defaults.
+  ctx.inject(['settings'], (settingsCtx) => {
+    settingsCtx.settings.register(TERMINAL_DISPLAY_NAMESPACE, TerminalDisplaySchema)
+  })
 
   // Session end releases that Session's terminals. There is no host-plane
   // per-Session disposer to hook, but `agent/disposed` is the event the agent

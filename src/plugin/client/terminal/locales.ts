@@ -42,6 +42,16 @@ export const zh = {
   'action.restart': '重新打开',
   'action.newTab': '新建终端',
 
+  'settings.title': '终端外观',
+  'settings.description': '终端怎么画：字体、字号、行高、光标和回滚行数。',
+  'settings.font': '字体',
+  'settings.fontSize': '字号',
+  'settings.lineHeight': '行高',
+  'settings.scrollback': '回滚行数',
+  'settings.cursorBlink': '光标闪烁',
+  'settings.decrease': '减小',
+  'settings.increase': '增大',
+
   loading: '正在读取…',
   cancel: '取消',
   close: '关闭',
@@ -79,6 +89,16 @@ export const en = {
   'action.end': 'End terminal',
   'action.restart': 'Restart',
   'action.newTab': 'New terminal',
+
+  'settings.title': 'Terminal appearance',
+  'settings.description': 'How a terminal is drawn: its font, size, line height, cursor, and scrollback.',
+  'settings.font': 'Font',
+  'settings.fontSize': 'Font size',
+  'settings.lineHeight': 'Line height',
+  'settings.scrollback': 'Scrollback',
+  'settings.cursorBlink': 'Blinking cursor',
+  'settings.decrease': 'Decrease',
+  'settings.increase': 'Increase',
 
   loading: 'Loading…',
   cancel: 'Cancel',

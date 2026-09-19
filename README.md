@@ -68,6 +68,10 @@ another tab**, and picking it brings that tab forward. Closing a tab leaves that
 chooser as detached — and **End terminal** in the panel, or a row's close control in the chooser, is what ends it.
 Hiding the tab, switching Session, or collapsing the sidebar also leaves a shell running.
 
+**Terminal appearance.** Font, size, line height, scrollback, and cursor blink live in the shell's own settings:
+**Settings → Plugins → Plugin configuration → Terminal appearance**. They are stored in the settings document, so every
+page of this deployment draws a terminal the same way.
+
 ## Config
 
 | Field | Default | Meaning |

@@ -1,13 +1,22 @@
 /**
- * The terminal's display preferences and where they are kept.
+ * The terminal's display preferences in the browser, and where they come from.
  *
  * Font, size, line height, cursor blink, and scrollback change how a shell is
- * drawn, never how it runs, so they are this page's preference rather than a
- * host fact. They are kept beside the Session memory and published through one
- * subscription, so a change reaches every open terminal at once.
+ * drawn, never how it runs. They are the plugin's own settings, so the durable
+ * copy lives in the Host's user-settings document under
+ * {@link TERMINAL_DISPLAY_NAMESPACE}; this module is the one place the browser
+ * reads them. A scope is bound when the settings service is composed, and every
+ * accepted section is published here, so the settings card and the shells never
+ * disagree — including a shell drawn before the first section arrived, which
+ * the subscription redraws. A page that never binds a scope still gets a
+ * working terminal: it draws with the schema's defaults and keeps a change for
+ * as long as the page lives.
  *
  * @module dsh-remote-workspace/plugin/client/terminal/settings
  */
+
+import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
+import { TERMINAL_DISPLAY_DEFAULTS, type TerminalDisplaySettings } from '../../../terminal/shared/display.ts'
 
 /** One family the browser reports from this machine's font list. */
 interface LocalFontData {
@@ -20,7 +29,7 @@ interface LocalFontWindow {
 }
 
 /** The family every browser has, and the one a terminal falls back to. */
-const GENERIC_FAMILY = 'monospace'
+const GENERIC_FAMILY = TERMINAL_DISPLAY_DEFAULTS.fontFamily
 
 /**
  * Whether one family is monospace.
@@ -88,81 +97,58 @@ export function fontStack(family: string): string {
   return family === GENERIC_FAMILY ? family : `"${family}", monospace`
 }
 
-/** What one terminal is drawn with. */
-export interface TerminalDisplaySettings {
-  /** The family a terminal is drawn in, by name; one of {@link monospaceFonts}. */
-  readonly fontFamily: string
-  /** Cell height in pixels. */
-  readonly fontSize: number
-  /** Line box as a multiple of the font size. */
-  readonly lineHeight: number
-  /** Whether the cursor blinks while the shell waits. */
-  readonly cursorBlink: boolean
-  /** Lines kept in the browser, above what the host retains. */
-  readonly scrollback: number
-}
+/** The durable scope, once the settings service is composed. */
+let scope: SettingsScope<TerminalDisplaySettings> | undefined
 
-/**
- * The settings a terminal starts with.
- *
- * The family is separate: nothing chosen yet means the generic one, which every
- * machine has, until the list this machine offers is read.
- */
-const DEFAULTS = {
-  fontSize: 12,
-  lineHeight: 1.2,
-  cursorBlink: true,
-  scrollback: 50_000,
-}
+/** The preferences in force right now. */
+let cached: TerminalDisplaySettings = { ...TERMINAL_DISPLAY_DEFAULTS }
 
-/** The bounds one numeric row steps between, and how far one step moves. */
-export const TERMINAL_STEPS = {
-  fontSize: { min: 11, max: 16, step: 1 },
-  lineHeight: { min: 1, max: 1.6, step: 0.1 },
-  scrollback: { min: 1_000, max: 100_000 },
-} as const
-
-/** Where this page keeps the terminal's display preferences. */
-const SETTINGS_KEY = 'dsh-remote-workspace.terminal.display'
-
-let cached: TerminalDisplaySettings | undefined
 const listeners = new Set<() => void>()
 
 /**
- * One stored number, held inside its bounds.
- * @param value - what storage held, of unknown shape.
- * @param bounds - the smallest and largest value the row allows.
- * @param fallback - what to use when storage held no number.
- * @returns the value to draw with.
+ * Whether two snapshots describe the same terminal.
+ * @param left - one snapshot.
+ * @param right - the other.
+ * @returns whether every preference agrees.
  */
-function clampNumber(value: unknown, bounds: { min: number; max: number }, fallback: number): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
-  return Math.min(bounds.max, Math.max(bounds.min, value))
+function same(left: TerminalDisplaySettings, right: TerminalDisplaySettings): boolean {
+  return left.fontFamily === right.fontFamily
+    && left.fontSize === right.fontSize
+    && left.lineHeight === right.lineHeight
+    && left.cursorBlink === right.cursorBlink
+    && left.scrollback === right.scrollback
 }
 
-/** Read the stored preferences, or the defaults when nothing usable is stored. */
-function read(): TerminalDisplaySettings {
-  let stored: Partial<TerminalDisplaySettings> = {}
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY)
-    if (raw !== null) stored = JSON.parse(raw) as Partial<TerminalDisplaySettings>
-  } catch {
-    // Storage can be unavailable, or hold a value another build wrote; the
-    // defaults are a working terminal either way.
-  }
-  const family = stored.fontFamily
-  return {
-    fontFamily: typeof family === 'string' && family !== '' ? family : GENERIC_FAMILY,
-    fontSize: clampNumber(stored.fontSize, TERMINAL_STEPS.fontSize, DEFAULTS.fontSize),
-    lineHeight: clampNumber(stored.lineHeight, TERMINAL_STEPS.lineHeight, DEFAULTS.lineHeight),
-    cursorBlink: typeof stored.cursorBlink === 'boolean' ? stored.cursorBlink : DEFAULTS.cursorBlink,
-    scrollback: clampNumber(stored.scrollback, TERMINAL_STEPS.scrollback, DEFAULTS.scrollback),
+/**
+ * Adopt whatever the settings document currently answers.
+ *
+ * A section that says what is already drawn is dropped, so the snapshot a
+ * reader holds keeps its identity until a preference really moves.
+ */
+function adopt(): void {
+  const section = scope?.getSnapshot().value
+  if (section === undefined || same(section, cached)) return
+  cached = section
+  for (const listener of listeners) listener()
+}
+
+/**
+ * Bind the durable preferences, and follow them for as long as the caller lives.
+ * @param bound - the scope over this plugin's settings namespace.
+ * @returns the disposer that unbinds it.
+ */
+export function bindTerminalDisplaySettings(bound: SettingsScope<TerminalDisplaySettings>): () => void {
+  scope = bound
+  const stop = bound.subscribe(adopt)
+  adopt()
+  return () => {
+    stop()
+    if (scope === bound) scope = undefined
   }
 }
 
 /** The preferences in force right now. */
 export function terminalDisplaySettings(): TerminalDisplaySettings {
-  cached ??= read()
   return cached
 }
 
@@ -171,18 +157,16 @@ export function terminalDisplaySettings(): TerminalDisplaySettings {
  * @param patch - the preferences the caller changed.
  */
 export function writeTerminalDisplaySettings(patch: Partial<TerminalDisplaySettings>): void {
-  cached = { ...terminalDisplaySettings(), ...patch }
-  try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(cached))
-  } catch {
-    // The change still applies to this page; it just will not survive a reload.
-  }
+  const next = { ...cached, ...patch }
+  if (same(next, cached)) return
+  cached = next
   for (const listener of listeners) listener()
+  for (const [field, value] of Object.entries(patch)) void scope?.set(field, value)
 }
 
 /**
  * Watch for changes, for a reader that draws with the preferences.
- * @param listener - called after every write.
+ * @param listener - called after every change.
  * @returns the unsubscribe function.
  */
 export function subscribeTerminalDisplaySettings(listener: () => void): () => void {

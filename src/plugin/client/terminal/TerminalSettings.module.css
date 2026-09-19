@@ -1,27 +1,63 @@
 /*
- * Styles for the terminal's display settings.
+ * Styles for the terminal's display settings card.
  *
  * Class names are local: the client bundle inlines this stylesheet through the
  * build's CSS Modules plugin, which hashes every selector and hands the
  * component the resulting map. Nothing here is global.
  *
- * Every value is a semantic --dsw-* alias, never a literal colour, so the block
- * follows the shell's light and dark themes without a second palette.
+ * The card chrome repeats the geometry of the page's other plugin cards,
+ * because the shared card component belongs to the shell's package and a client
+ * bundle reaches no package it does not share through the loader. Every value
+ * is a semantic --dsw-* alias, so the card follows the light and dark themes
+ * without a second palette.
  */
 
-.settings {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  /* The block closes the page: a hairline parts it from the machine tree. */
-  padding-top: 14px;
-  border-top: 0.5px solid var(--dsw-alias-border-l1);
-  color: var(--dsw-alias-label-primary);
-  font-family: var(--dsw-font-family);
-  font-size: 13px;
+.card {
+  list-style: none;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: 16px;
+  background: var(--dsw-alias-bg-layer-3);
+  transition: border-color .16s, background .16s;
 }
-.title { margin: 0; font-size: 14px; font-weight: 600; }
-.rows { display: flex; flex-direction: column; }
+.card:hover { border-color: var(--dsw-alias-label-dimmed); }
+
+/* An open card reads as the one being worked on, not merely taller. */
+.cardOpen {
+  background: var(--dsw-alias-bg-layer-2);
+  border-color: var(--dsw-alias-label-dimmed);
+}
+
+.header {
+  width: 100%;
+  appearance: none;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
+}
+.header:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: -2px; }
+
+/* Name over description: the description is what tells two plugins apart, so
+   it gets its own line rather than trailing the name. */
+.headText { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.name { font-size: 15px; font-weight: 600; line-height: 1.4; color: var(--dsw-alias-label-primary); }
+.description { font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-tertiary); }
+.chevron { flex: none; color: var(--dsw-alias-label-tertiary); transition: transform .16s; }
+.chevronOpen { transform: rotate(180deg); }
+
+.body {
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+  margin: 0 16px;
+  padding: 6px 0 8px;
+}
+
 .row {
   display: flex;
   align-items: center;
@@ -31,7 +67,7 @@
   padding: 6px 0;
 }
 .row + .row { border-top: 1px solid var(--dsw-alias-border-l1); }
-.label { font-size: 13px; }
+.label { font-size: 13px; color: var(--dsw-alias-label-primary); }
 .step { display: flex; align-items: center; gap: 6px; }
 .number { width: 120px; }
 .number input {

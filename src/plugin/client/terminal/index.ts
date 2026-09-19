@@ -32,6 +32,13 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { SidebarRightTabDefinition, TabId } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
+// Type-only: the settings scope service merge (ctx.settingsScope) this half
+// binds the display preferences through.
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
+import {
+  TERMINAL_DISPLAY_NAMESPACE,
+  type TerminalDisplaySettings,
+} from '../../../terminal/shared/display.ts'
 import { request } from '../api.ts'
 import { en, NS, zh, type TerminalKey } from './locales.ts'
 import { TerminalBody } from './TerminalBody.tsx'
@@ -39,7 +46,8 @@ import { type TerminalSummary } from './TerminalPicker.tsx'
 import { TerminalTitle } from './TerminalTitle.tsx'
 import { TerminalGlyph } from './glyphs.tsx'
 import { applyTerminalDisplaySettings } from './session.ts'
-import { subscribeTerminalDisplaySettings } from './settings.ts'
+import { bindTerminalDisplaySettings, subscribeTerminalDisplaySettings } from './settings.ts'
+import { TerminalSettings } from './TerminalSettings.tsx'
 
 /** The tab type this plugin contributes to the right Sidebar. */
 const TERMINAL_KIND = 'terminal'
@@ -131,6 +139,25 @@ export function mountTerminal(ctx: Context): void {
     () => subscribeTerminalDisplaySettings(applyTerminalDisplaySettings),
     'dsh-terminal: display preferences',
   )
+  // Those preferences are this plugin's own settings, so the durable copy lives
+  // in the Host's settings document: the Host registers the namespace, the
+  // scope below is this half's handle on it, and the card keyed by it is what
+  // the Plugins settings page draws. Acquired softly — a deployment without the
+  // settings service still opens terminals, drawn with the schema's defaults,
+  // and shows no card.
+  ctx.inject(['settingsScope'], (scoped) => {
+    scoped.effect(
+      () => bindTerminalDisplaySettings(scoped.settingsScope.bind<TerminalDisplaySettings>({
+        namespace: TERMINAL_DISPLAY_NAMESPACE,
+      })),
+      'dsh-terminal: display preferences scope',
+    )
+    scoped.effect(() => scoped.slots.inject('settings.plugin.item', () => scoped.slots.register({
+      name: 'settings.plugin.item',
+      key: TERMINAL_DISPLAY_NAMESPACE,
+      locale: NS,
+    }, TerminalSettings)), 'dsh-terminal: display preferences card')
+  })
   // Bound, not called: every label is read through it at draw time, so a
   // language change needs no re-registration.
   const t = ctx.locale.bind(NS)
