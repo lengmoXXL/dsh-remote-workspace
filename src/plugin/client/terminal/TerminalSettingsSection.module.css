@@ -1,0 +1,40 @@
+/*
+ * Styles for the terminal's settings section.
+ *
+ * Class names are local: the client bundle inlines this stylesheet through the
+ * build's CSS Modules plugin, which hashes every selector and hands the
+ * component the resulting map. Nothing here is global.
+ *
+ * Every value is a semantic --dsw-* alias, never a literal colour, so the
+ * section follows the shell's light and dark themes without a second palette.
+ */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--dsw-font-family);
+  font-size: 13px;
+}
+.head { display: flex; flex-direction: column; gap: 6px; }
+.title { margin: 0; font-size: 14px; font-weight: 600; }
+.rows { display: flex; flex-direction: column; }
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 40px;
+  padding: 6px 0;
+}
+.row + .row { border-top: 1px solid var(--dsw-alias-border-l1); }
+.label { font-size: 13px; }
+.step { display: flex; align-items: center; gap: 6px; }
+.value {
+  min-width: 56px;
+  text-align: center;
+  color: var(--dsw-alias-label-secondary);
+  font-family: var(--ds-font-family-code);
+  font-size: 12.5px;
+}

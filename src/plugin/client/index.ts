@@ -27,6 +27,8 @@ import { request } from './api.ts'
 import type { RemoteWorktreesKey } from './locales.ts'
 import { en, NS, zh } from './locales.ts'
 import { mountTerminal } from './terminal/index.ts'
+import { NS as TERMINAL_NS } from './terminal/locales.ts'
+import { TerminalSettingsSection } from './terminal/TerminalSettingsSection.tsx'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -134,7 +136,16 @@ export function apply(ctx: Context): void {
     locale: NS,
     inject: () => face,
   }, RemoteWorktreesSection))
-  // The section registers first: the terminal half owns the same plugin, and a
-  // failure there must not take the settings surface with it.
+  // The terminal's own page: its display preferences belong to the terminal,
+  // not to the machines and worktrees the section above manages.
+  ctx.slots.inject('settings.section', () => ctx.slots.register({
+    name: 'settings.section',
+    id: 'dsh-terminal',
+    order: 40,
+    label: () => ctx.locale.bind(TERMINAL_NS)('settings.label'),
+    locale: TERMINAL_NS,
+  }, TerminalSettingsSection))
+  // The sections register first: the terminal half owns the same plugin, and a
+  // failure there must not take the settings surfaces with it.
   mountTerminal(ctx)
 }

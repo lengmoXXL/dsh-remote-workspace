@@ -33,6 +33,7 @@ import { Terminal, type ITheme } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 import type { ClientFrame, HostFrame } from '../../../terminal/shared/wire.ts'
 import { SOCKET_PATH } from '../../../terminal/shared/wire.ts'
+import { terminalDisplaySettings } from './settings.ts'
 import css from './TerminalSurface.module.css'
 
 /** What the status line reports about one terminal. */
@@ -117,12 +118,6 @@ interface Entry {
   /** The pending reconnect, while one is scheduled. */
   reconnectTimer?: ReturnType<typeof setTimeout> | undefined
 }
-
-/** The monospace stack a terminal is drawn in. */
-const MONO_FONT = "'SF Mono', 'Menlo', 'DejaVu Sans Mono', 'Cascadia Mono', 'Consolas', 'Liberation Mono', monospace"
-
-/** Scrollback lines one terminal keeps in the browser. */
-const SCROLLBACK_LINES = 5000
 
 /** First delay before a dropped socket is reconnected; it doubles per attempt. */
 const RECONNECT_BASE_MS = 500
@@ -327,12 +322,13 @@ function create(mount: TerminalMount): Entry {
   // The local is declared beside this file; the CSS Modules indexer cannot prove it.
   element.className = css.surface!
 
+  const display = terminalDisplaySettings()
   const term = new Terminal({
-    cursorBlink: true,
-    fontFamily: MONO_FONT,
-    fontSize: 12,
-    lineHeight: 1.2,
-    scrollback: SCROLLBACK_LINES,
+    cursorBlink: display.cursorBlink,
+    fontFamily: display.fontFamily,
+    fontSize: display.fontSize,
+    lineHeight: display.lineHeight,
+    scrollback: display.scrollback,
     macOptionIsMeta: true,
     theme: palette(),
   })
@@ -564,6 +560,24 @@ export function endTerminal(sessionId: string, tabId: string): string | undefine
  */
 export function terminalState(sessionId: string, tabId: string): TerminalState {
   return entries.get(tabKey(sessionId, tabId))?.state ?? { kind: 'opening' }
+}
+
+/**
+ * Redraw every open terminal after a display preference changed.
+ *
+ * A different font changes the cell's size, so the fit is re-run: the shell on
+ * the host keeps its own geometry, and the browser only re-measures it.
+ */
+export function applyTerminalDisplaySettings(): void {
+  const display = terminalDisplaySettings()
+  for (const entry of entries.values()) {
+    entry.term.options.fontFamily = display.fontFamily
+    entry.term.options.fontSize = display.fontSize
+    entry.term.options.lineHeight = display.lineHeight
+    entry.term.options.cursorBlink = display.cursorBlink
+    entry.term.options.scrollback = display.scrollback
+    entry.fit.fit()
+  }
 }
 
 /**

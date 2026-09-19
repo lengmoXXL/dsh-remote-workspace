@@ -38,6 +38,8 @@ import { TerminalBody } from './TerminalBody.tsx'
 import { type TerminalSummary } from './TerminalPicker.tsx'
 import { TerminalTitle } from './TerminalTitle.tsx'
 import { TerminalGlyph } from './glyphs.tsx'
+import { applyTerminalDisplaySettings } from './session.ts'
+import { subscribeTerminalDisplaySettings } from './settings.ts'
 
 /** The tab type this plugin contributes to the right Sidebar. */
 const TERMINAL_KIND = 'terminal'
@@ -123,6 +125,12 @@ function panelFace(
  */
 export function mountTerminal(ctx: Context): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-terminal: dictionaries')
+  // The preferences are read when a terminal is created and pushed to the ones
+  // already open, so the settings page and the shells never disagree.
+  ctx.effect(
+    () => subscribeTerminalDisplaySettings(applyTerminalDisplaySettings),
+    'dsh-terminal: display preferences',
+  )
   // Bound, not called: every label is read through it at draw time, so a
   // language change needs no re-registration.
   const t = ctx.locale.bind(NS)
