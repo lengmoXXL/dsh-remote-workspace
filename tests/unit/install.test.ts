@@ -351,7 +351,7 @@ test('a machine that already carries the expected marker keeps its binary', asyn
   assert.equal(uploadIndex(host), -1)
 })
 
-test('an older build is replaced and its stale process stopped', async () => {
+test('an older build is replaced and the process running it stopped', async () => {
   const host = machine()
   host.alive.add(11)
   host.state = stateFile('0.0.1', 11, 40_000)
