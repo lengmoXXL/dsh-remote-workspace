@@ -79,7 +79,7 @@ export function attachTerminal(ctx: Context, registry: TerminalRegistry, socket:
   let closed = false
   /** The size the browser last asked for; the spawn uses it even if it changed mid-allocation. */
   let requested = { cols: 80, rows: 24 }
-  /** The size the PTY actually has, so an unchanged resize is not forwarded. */
+  /** The size last forwarded, so an unchanged resize is not asked for again. */
   let applied: { cols: number; rows: number } | undefined
   const typed: string[] = []
 
@@ -120,13 +120,22 @@ export function attachTerminal(ctx: Context, registry: TerminalRegistry, socket:
     if (current !== undefined) registry.detach(current, sink)
   }
 
+  /** Whether this socket may take on a terminal now, answering the browser if not. */
+  const claim = (): boolean => {
+    if (entryId === undefined && !opening) return true
+    post({ t: 'error', message: 'this connection already owns a terminal' })
+    return false
+  }
+
+  /** Deliver the keystrokes typed before the shell existed. */
+  const flushTyped = (id: string): void => {
+    for (const data of typed.splice(0)) void registry.write(id, data).catch(() => undefined)
+  }
+
   /** Register the shell for one Session's workspace and start streaming it. */
   const open = async (frame: OpenFrame): Promise<void> => {
     if (closed) return
-    if (entryId !== undefined || opening) {
-      post({ t: 'error', message: 'this connection already owns a terminal' })
-      return
-    }
+    if (!claim()) return
     requested = { cols: dimension(frame.cols, 80), rows: dimension(frame.rows, 24) }
     opening = true
     try {
@@ -142,9 +151,7 @@ export function attachTerminal(ctx: Context, registry: TerminalRegistry, socket:
       applied = { ...requested }
       registry.attach(entry.id, sink)
       post({ t: 'ready', pid: entry.handle.pid, cwd: entry.cwd, id: entry.id, label: entry.label })
-      for (const data of typed.splice(0)) {
-        void registry.write(entry.id, data).catch(() => undefined)
-      }
+      flushTyped(entry.id)
     } catch (error: unknown) {
       post({ t: 'error', message: describe(error) })
     } finally {
@@ -170,10 +177,7 @@ export function attachTerminal(ctx: Context, registry: TerminalRegistry, socket:
   /** Reattach this socket to a terminal it already knows by id. */
   const reattach = (frame: AttachFrame): void => {
     if (closed) return
-    if (entryId !== undefined || opening) {
-      post({ t: 'error', message: 'this connection already owns a terminal' })
-      return
-    }
+    if (!claim()) return
     let entry
     try {
       // Ownership first: an id alone must not let one Session watch another's
@@ -192,9 +196,7 @@ export function attachTerminal(ctx: Context, registry: TerminalRegistry, socket:
     // browser measures now, and any difference is a real resize.
     applied = { cols: entry.cols, rows: entry.rows }
     post({ t: 'ready', pid: entry.handle.pid, cwd: entry.cwd, id: entry.id, label: entry.label })
-    for (const data of typed.splice(0)) {
-      void registry.write(entry.id, data).catch(() => undefined)
-    }
+    flushTyped(entry.id)
     void applySize(frame.cols, frame.rows)
   }
 
