@@ -93,19 +93,14 @@ impl TerminalBackend {
         });
         let term_id = unique_id(&self.counter);
         start_watchers(&terminal, master);
-        let published = terminal.clone();
-        self.terminals
-            .lock()
-            .expect("terminal table poisoned")
-            .insert(term_id.clone(), terminal);
-        // A terminal allocated just before the connection closed lands here
-        // after the table was drained; it is ended rather than left allocated.
+        // Decided under the table lock: a terminal that lands before `close` sets
+        // the flag is drained by it, and one that lands after is ended here.
+        let mut table = self.terminals.lock().expect("terminal table poisoned");
         if self.closed.load(Ordering::SeqCst) {
-            self.terminals
-                .lock()
-                .expect("terminal table poisoned")
-                .remove(&term_id);
-            published.dispose();
+            drop(table);
+            terminal.dispose();
+        } else {
+            table.insert(term_id.clone(), terminal);
         }
         Ok(json!({ "termId": term_id, "pid": pid }))
     }
