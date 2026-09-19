@@ -553,20 +553,28 @@ fn cstring(value: &str) -> Result<CString> {
 }
 
 /// Build the NUL-terminated argv the child executes.
-/// @returns the owned strings, which must outlive the `fork`, and their pointers.
+/// @returns the owned strings and their pointers.
 fn argv_pointers(program: &str, args: &[String]) -> Result<(Vec<CString>, Vec<*const c_char>)> {
     let mut owned = Vec::with_capacity(args.len() + 1);
     owned.push(cstring(program)?);
     for argument in args {
         owned.push(cstring(argument)?);
     }
+    Ok(nul_terminated(owned))
+}
+
+/// Point at each owned string and close the list with a null.
+///
+/// The pointers borrow the strings they came from, so the pair has to stay
+/// alive together until the child has `execve`d.
+fn nul_terminated(owned: Vec<CString>) -> (Vec<CString>, Vec<*const c_char>) {
     let mut pointers: Vec<*const c_char> = owned.iter().map(|value| value.as_ptr()).collect();
     pointers.push(std::ptr::null());
-    Ok((owned, pointers))
+    (owned, pointers)
 }
 
 /// Build the NUL-terminated environment the child executes with.
-/// @returns the owned strings, which must outlive the `fork`, and their pointers.
+/// @returns the owned strings and their pointers.
 fn env_pointers(spec: &TerminalSpawnSpec) -> Result<(Vec<CString>, Vec<*const c_char>)> {
     let mut entries = scrubbed_environment();
     for (key, value) in &spec.env {
@@ -582,9 +590,7 @@ fn env_pointers(spec: &TerminalSpawnSpec) -> Result<(Vec<CString>, Vec<*const c_
     for (key, value) in entries {
         owned.push(cstring(&format!("{key}={value}"))?);
     }
-    let mut pointers: Vec<*const c_char> = owned.iter().map(|value| value.as_ptr()).collect();
-    pointers.push(std::ptr::null());
-    Ok((owned, pointers))
+    Ok(nul_terminated(owned))
 }
 
 /// Open a PTY master and resolve its slave path.
