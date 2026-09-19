@@ -377,10 +377,8 @@ fn start_watchers(terminal: &Arc<ManagedTerminal>, master: RawFd) {
                 }
                 // A session reaped elsewhere still ended; the exit facts are
                 // simply unknown rather than the daemon hanging on it.
-                *reaper.outcome.lock().expect("terminal outcome poisoned") = Some(Outcome {
-                    exit_code: None,
-                    signal: None,
-                });
+                *reaper.outcome.lock().expect("terminal outcome poisoned") =
+                    Some(Outcome::unknown());
                 return;
             }
         }

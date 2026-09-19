@@ -409,10 +409,7 @@ impl ManagedProcess {
                 if group_alive(self.pid) {
                     signal_group(self.pid, libc::SIGKILL);
                 }
-                state.settled = state.exit_facts.clone().or(Some(Outcome {
-                    exit_code: None,
-                    signal: None,
-                }));
+                state.settled = Some(state.exit_facts.clone().unwrap_or_else(Outcome::unknown));
             }
         }
         self.settled.send_replace(self.outcome());
@@ -480,10 +477,7 @@ async fn read_stream<R: AsyncRead + Unpin>(
 async fn await_child(managed: Arc<ManagedProcess>, mut child: Child) {
     let facts = match child.wait().await {
         Ok(status) => outcome_of_status(status.into_raw()),
-        Err(_) => Outcome {
-            exit_code: None,
-            signal: None,
-        },
+        Err(_) => Outcome::unknown(),
     };
     {
         let mut state = managed.state.lock().expect("process state poisoned");
@@ -503,10 +497,7 @@ async fn await_child(managed: Arc<ManagedProcess>, mut child: Child) {
     let settled = {
         let mut state = managed.state.lock().expect("process state poisoned");
         if state.settled.is_none() {
-            state.settled = state.exit_facts.clone().or(Some(Outcome {
-                exit_code: None,
-                signal: None,
-            }));
+            state.settled = Some(state.exit_facts.clone().unwrap_or_else(Outcome::unknown));
         }
         state.settled.clone()
     };

@@ -117,6 +117,14 @@ pub struct Outcome {
 }
 
 impl Outcome {
+    /// The facts of a process whose exit was never observed.
+    pub fn unknown() -> Self {
+        Self {
+            exit_code: None,
+            signal: None,
+        }
+    }
+
     /// Render the outcome as the wire result, or `null` while it is unknown.
     /// @param outcome - the settled facts, if any.
     /// @returns the JSON value `sp.outcome` and `term.outcome` answer with.
