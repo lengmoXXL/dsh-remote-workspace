@@ -25,7 +25,10 @@
  * @module dsh-remote-workspace/plugin/client/terminal/session
  */
 
+import { ClipboardAddon } from '@xterm/addon-clipboard'
+import type { ClipboardSelectionType, IClipboardProvider } from '@xterm/addon-clipboard'
 import { FitAddon } from '@xterm/addon-fit'
+import { WebLinksAddon } from '@xterm/addon-web-links'
 import { Terminal, type ITheme } from '@xterm/xterm'
 // Inlined by the build, which has no stylesheet channel to emit it into.
 import '@xterm/xterm/css/xterm.css'
@@ -264,6 +267,24 @@ export function terminalTab(sessionId: string, id: string): string | undefined {
   return undefined
 }
 
+/**
+ * The browser's clipboard, with OSC 52 reads refused.
+ *
+ * A terminal here can be a shell on another machine, and an OSC 52 read sends
+ * whatever the clipboard holds back into that shell's input. Copying out of the
+ * terminal is what this plugin wants; reading into it is a leak nobody asked
+ * for, so a read reports an empty clipboard.
+ */
+class WriteOnlyClipboard implements IClipboardProvider {
+  async readText(): Promise<string> {
+    return ''
+  }
+
+  async writeText(_selection: ClipboardSelectionType, text: string): Promise<void> {
+    await navigator.clipboard.writeText(text)
+  }
+}
+
 /** Tell every title seat that a label changed. */
 function emitLabels(): void {
   for (const listener of labelListeners) listener()
@@ -332,6 +353,11 @@ function create(mount: TerminalMount): Entry {
   })
   const fit = new FitAddon()
   term.loadAddon(fit)
+  // The shell's own copy is an OSC 52 sequence, which is how nvim yanks into a
+  // terminal: this addon is what carries it to the clipboard the person
+  // actually has. The link addon makes an address in the output clickable.
+  term.loadAddon(new ClipboardAddon(undefined, new WriteOnlyClipboard()))
+  term.loadAddon(new WebLinksAddon())
   term.open(element)
 
   const observer = new ResizeObserver(() => {

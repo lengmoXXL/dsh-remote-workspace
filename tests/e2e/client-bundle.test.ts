@@ -96,8 +96,10 @@ async function loadBundle(): Promise<LoadedEntry> {
       },
     },
   }
-  // The bundle is not a module: it is a script that registers itself.
-  new Function('window', 'require', source)(window, require)
+  // The bundle is not a module: it is a script that registers itself. It is a
+  // browser script, so it also gets the global object under the name a browser
+  // gives it — a bundled dependency reaches for `self` while it loads.
+  new Function('window', 'require', 'self', source)(window, require, window)
   assert.notEqual(loaded, undefined, 'the bundle never called window.__ModuleLoader__.load')
   return loaded!
 }
