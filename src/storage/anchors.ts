@@ -57,8 +57,9 @@ export type AnchorId = Branded<'AnchorId'>
 /**
  * Admit a string as an anchor id.
  *
- * Called only where an untrusted string first becomes one: a parsed document,
- * a route segment, or a tool argument. Every later hop carries the type.
+ * Called where a string first becomes an id: a tool argument, a route segment,
+ * or one this plugin derives from the coordinates it names. Every later hop
+ * carries the type.
  * @param value - the string the parser produced.
  * @returns the same string, branded.
  */
@@ -216,9 +217,10 @@ function isAnchorRecord(value: unknown): value is AnchorRecord {
     && typeof record.anchorPath === 'string'
     && typeof record.remoteRoot === 'string'
     && typeof record.repoPath === 'string'
-    // A worktree has a branch; a directory anchor and any document written
-    // before kinds existed are the only ones allowed to omit it.
-    && (typeof record.branch === 'string' || (record.branch === undefined && kind !== 'worktree'))
+    // Every anchor names a branch except a directory anchor, which maps a path
+    // that has none: a document written before kinds existed still carries one,
+    // so only the declared kind may omit it.
+    && (typeof record.branch === 'string' || (record.branch === undefined && kind === 'directory'))
     && typeof record.createdAt === 'string'
 }
 
