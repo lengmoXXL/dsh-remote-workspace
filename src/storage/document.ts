@@ -22,7 +22,10 @@ const FILE_MODE = 0o600
 export interface DocumentSpec<T> {
   /** Absolute path of the JSON document. */
   readonly file: string
-  /** Revision this build writes and the only one it accepts. */
+  /**
+   * Revision this build writes. Revision 1 is read through
+   * {@link DocumentSpec.migrate} when the caller supplies one.
+   */
   readonly version: number
   /** Property holding the record array. */
   readonly key: string
