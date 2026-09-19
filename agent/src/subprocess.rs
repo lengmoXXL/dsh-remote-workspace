@@ -514,35 +514,16 @@ async fn await_child(managed: Arc<ManagedProcess>, mut child: Child) {
     managed.settled.send_replace(settled);
 }
 
-/// The protocol's exit facts for one OS wait status.
-fn facts_of(status: &std::process::ExitStatus) -> Outcome {
-    use std::os::unix::process::ExitStatusExt;
-    match status.signal() {
-        Some(number) => Outcome {
-            exit_code: None,
-            signal: signal_name(number),
-        },
-        None => Outcome {
-            exit_code: status.code(),
-            signal: None,
-        },
-    }
-}
-
 /// Resolve one candidate path to a regular, executable, canonical file.
 fn canonical_executable(candidate: &str) -> Result<String> {
-    let canonical = std::fs::canonicalize(candidate).map_err(|error| {
+    let unresolvable = |error: std::io::Error| {
         Failure::new(
             "SP_NOT_FOUND",
             format!("cannot resolve \"{candidate}\": {error}"),
         )
-    })?;
-    let info = std::fs::metadata(&canonical).map_err(|error| {
-        Failure::new(
-            "SP_NOT_FOUND",
-            format!("cannot resolve \"{candidate}\": {error}"),
-        )
-    })?;
+    };
+    let canonical = std::fs::canonicalize(candidate).map_err(unresolvable)?;
+    let info = std::fs::metadata(&canonical).map_err(unresolvable)?;
     if !info.is_file() {
         return Err(Failure::new(
             "SP_NOT_EXECUTABLE",
