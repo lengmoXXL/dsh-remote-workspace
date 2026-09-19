@@ -26,7 +26,7 @@ const DOCUMENT_VERSION = 2
  * @param transport - how the host reaches the daemon.
  * @returns the SSH destination, the direct address, or the local machine's name.
  */
-export function defaultNodeTitle(transport: NodeTransport): string {
+function defaultNodeTitle(transport: NodeTransport): string {
   if (transport.kind === 'local') return LOCAL_TITLE
   return transport.kind === 'ssh' ? transport.target : `${transport.host}:${String(transport.port)}`
 }
@@ -77,8 +77,9 @@ export type NodeId = Branded<'NodeId'>
 /**
  * Admit a string as a machine id.
  *
- * Called only where an untrusted string first becomes one: a parsed document,
- * a route segment, or a tool argument. Every later hop carries the type.
+ * Called where a string first becomes an id: a tool argument, a route segment,
+ * or one this plugin derives from the coordinates it names. Every later hop
+ * carries the type.
  * @param value - the string the parser produced.
  * @returns the same string, branded.
  */
@@ -108,7 +109,7 @@ const LOCAL_TITLE = 'Local'
  * make, and its paths are the paths this process already has.
  * @returns the local machine's record, for a caller that needs one.
  */
-export function localNode(): NodeRecord {
+function localNode(): NodeRecord {
   return {
     nodeId: LOCAL_NODE_ID,
     title: LOCAL_TITLE,
