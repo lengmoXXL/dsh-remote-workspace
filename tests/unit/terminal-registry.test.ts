@@ -469,6 +469,9 @@ test('resize reports the provider’s answer without changing the terminal state
 
   assert.equal(await registry.resize('t1', 100, 30), true)
   assert.deepEqual(terminal.resizes, [[100, 30]])
-  assert.equal(registry.listFor('s1')[0]?.cols, 100)
-  assert.equal(registry.listFor('s1')[0]?.rows, 30)
+
+  const entry = registry.listFor('s1')[0]
+  assert.equal(entry?.state, 'running')
+  assert.equal(entry?.cols, 100)
+  assert.equal(entry?.rows, 30)
 })
