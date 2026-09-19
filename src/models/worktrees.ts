@@ -96,9 +96,9 @@ export interface WorktreeStatus {
   /**
    * Whether this plugin cut the checkout itself.
    *
-   * A managed checkout sits under the configured worktree root, so removing it
-   * is this plugin's business; one that was adopted from the machine is the
-   * operator's, and is only ever released.
+   * Both kinds can be removed — the operator's own checkout included, which is
+   * what the confirmation says before it deletes one — so the flag only picks
+   * that confirmation's wording.
    */
   readonly managed: boolean
   /**
