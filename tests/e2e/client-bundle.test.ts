@@ -42,8 +42,10 @@ async function readArtifact(path: string): Promise<string> {
 
 /** Icons the client imports; every one renders an empty svg. */
 const ICON_NAMES = [
-  'IconBranchOutline16', 'IconCloseOutline16', 'IconEllipsisOutline16', 'IconFolderOpen16',
-  'IconGlobeOutline14', 'IconWarningOutline16',
+  'IconBranchOutline16', 'IconChevronDownOutline14', 'IconCloseOutline16', 'IconEllipsisOutline16',
+  'IconFolderClose16', 'IconFolderOpen16', 'IconFolderOpenOutline16', 'IconGlobeOutline14',
+  'IconLinkOutline16', 'IconPlusOutline16', 'IconProjectAddOutline16', 'IconRefreshOutline16',
+  'IconWarningOutline16',
 ] as const
 
 /**
@@ -56,10 +58,16 @@ const ICON_NAMES = [
 function primitivesStub(): Record<string, unknown> {
   const passthrough = (tag: string) => (props: { children?: ReactNode }) =>
     createElement(tag, null, props.children)
+  // An icon-only control carries its name as an attribute rather than as text,
+  // which is what the section's own assertions read.
+  const button = (props: { children?: ReactNode; title?: string; 'aria-label'?: string }) =>
+    createElement('button', { title: props.title, 'aria-label': props['aria-label'] }, props.children)
   const stub: Record<string, unknown> = {
-    Button: passthrough('button'),
+    Button: button,
     Input: () => createElement('input', null),
     StateDot: () => createElement('span', null),
+    Menu: (props: { anchor?: ReactNode }) => createElement('span', null, props.anchor),
+    Switch: () => createElement('span', null),
     Tag: passthrough('span'),
     DisclosureRow: (props: { title: string; children?: ReactNode }) =>
       createElement('div', null, props.title, props.children),
@@ -307,7 +315,6 @@ test('the section renders its frame with the injected face threaded through', as
   )
 
   assert.match(markup, /title/)
-  assert.match(markup, /subtitle/)
   assert.match(markup, /addMachine/)
   assert.match(markup, /refresh/)
   assert.match(markup, /loading/)

@@ -15,9 +15,6 @@ export const NS = 'dsh-remote-workspace'
 /** Simplified Chinese dictionary and key source. */
 export const zh = {
   title: '远程工作区',
-  subtitle:
-    '管理可以访问的机器、机器上的目录，以及从 git 仓库切出的 worktree。'
-    + '切出的 worktree 会成为一个本地工作区，其文件与命令都在那台机器上执行。',
   refresh: '刷新',
   actions: '操作',
   addMachine: '添加机器',
@@ -49,7 +46,6 @@ export const zh = {
   openWorktree: '打开工作区',
   closeWorktree: '关闭工作区',
   removeWorktree: '移除',
-  releaseWorktree: '关闭 worktree',
 
   fieldTarget: 'SSH 目标',
   fieldSshPort: 'SSH 端口',
@@ -88,13 +84,10 @@ export const zh = {
   removeMachineBody: '这台机器的仓库登记会一起删除，机器上的 worktree 与分支不受影响。',
   removeRepositoryTitle: '移除仓库登记？',
   removeRepositoryBody: '只会删除本地登记，并关闭它的目录工作区；机器上的文件和 worktree 都不受影响。',
-  notARepository: '还不是 git 仓库',
   removeWorktreeTitle: '移除 worktree？',
   removeWorktreeBody: '会删除机器上的检出目录；勾选后分支也会被删除。未提交的改动会一并丢弃。',
   removeAdoptedWorktreeBody: '这个检出不是插件切出来的，机器上可能还有别人的活儿；删除会把它整个删掉，未提交的改动会一并丢弃。',
   removeWorktreeBranch: '同时删除分支',
-  releaseWorktreeTitle: '关闭这个 worktree？',
-  releaseWorktreeBody: '只会移除插件里的这条记录并关闭它的工作区；机器上的检出原样保留。',
   noToken: '未设置令牌',
 } satisfies Record<string, string>
 
@@ -104,10 +97,6 @@ export type RemoteWorktreesKey = keyof typeof zh
 /** English dictionary, checked against the Chinese key set. */
 export const en = {
   title: 'Remote workspaces',
-  subtitle:
-    'Manage the machines this deployment can reach, the directories on them, '
-    + 'and the worktrees cut from the git repositories among them. A worktree '
-    + 'becomes a local workspace whose file and shell tools run on that machine.',
   refresh: 'Refresh',
   actions: 'Actions',
   addMachine: 'Add machine',
@@ -139,7 +128,6 @@ export const en = {
   openWorktree: 'Open workspace',
   closeWorktree: 'Close workspace',
   removeWorktree: 'Remove',
-  releaseWorktree: 'Close worktree',
 
   fieldTarget: 'SSH destination',
   fieldSshPort: 'SSH port',
@@ -178,12 +166,9 @@ export const en = {
   removeMachineBody: 'Its repository registrations are dropped too. Worktrees and branches on the machine are untouched.',
   removeRepositoryTitle: 'Forget this repository?',
   removeRepositoryBody: 'Only the local registration is dropped, and the workspace of the directory itself is closed with it; files and worktrees on the machine are untouched.',
-  notARepository: 'Not a git repository yet',
   removeWorktreeTitle: 'Remove this worktree?',
   removeWorktreeBody: 'The checkout is deleted on the machine; tick the option to delete its branch too. Uncommitted changes are discarded.',
   removeAdoptedWorktreeBody: 'This checkout is not one the plugin cut, and the machine may hold someone\'s work in it; removing deletes the whole directory, and uncommitted changes go with it.',
   removeWorktreeBranch: 'Also delete its branch',
-  releaseWorktreeTitle: 'Close this worktree?',
-  releaseWorktreeBody: 'Only the plugin\'s record goes, and its workspace is closed with it; the checkout on the machine stays where it is.',
   noToken: 'no token',
 } satisfies Record<RemoteWorktreesKey, string>

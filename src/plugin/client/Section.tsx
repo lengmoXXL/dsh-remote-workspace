@@ -14,9 +14,16 @@ import {
   Button,
   DisclosureRow,
   IconBranchOutline16,
+  IconCloseOutline16,
   IconEllipsisOutline16,
+  IconFolderClose16,
   IconFolderOpen16,
+  IconFolderOpenOutline16,
   IconGlobeOutline14,
+  IconLinkOutline16,
+  IconPlusOutline16,
+  IconProjectAddOutline16,
+  IconRefreshOutline16,
   IconWarningOutline16,
   Menu,
   Modal,
@@ -128,12 +135,6 @@ interface WorktreeStatus {
    * cut with no work of anyone else's in it, or one it found on the machine.
    */
   readonly managed: boolean
-  /**
-   * Whether the plugin holds a record for the row. A checkout read straight
-   * from a machine's git has none until it is opened, so release has nothing
-   * to drop and the row offers only open and remove.
-   */
-  readonly held: boolean
   /** Why the host could not read the machine, when it could not. */
   readonly error?: string
 }
@@ -184,8 +185,6 @@ export interface RemoteWorktreesFace {
   createWorktree(draft: { repoId: RepoId; name: string; path?: string }): Promise<void>
   /** Remove a worktree; `deleteBranch` also drops the branch it was cut on. */
   removeWorktree(anchorId: AnchorId, deleteBranch: boolean): Promise<void>
-  /** Stop managing a checkout, leaving it on the machine untouched. */
-  releaseWorktree(anchorId: AnchorId): Promise<void>
   /** Register a worktree as a workspace, so a session can open on it. */
   openWorktree(anchorId: AnchorId): Promise<void>
   /** Drop a worktree's workspace registration, leaving the machine untouched. */
@@ -278,6 +277,20 @@ interface RowAction {
 }
 
 /**
+ * One row control's accessible name and hover text.
+ *
+ * The label carries the object it acts on: several rows offer the same action,
+ * and a bare "Open workspace" would name none of them.
+ * @param t - the section's translate.
+ * @param key - the action's locale key.
+ * @param name - the row the control belongs to.
+ * @returns the label.
+ */
+function controlLabel(t: T, key: RemoteWorktreesKey, name: string): string {
+  return `${t(key)}: ${name}`
+}
+
+/**
  * One object's actions, folded into a menu so the object keeps one row.
  *
  * Every row's trigger reads the same, so the accessible name carries the
@@ -331,22 +344,19 @@ function ActionsMenu({ name, busy, actions, t }: {
 /**
  * One worktree row inside an expanded repository.
  *
- * The row names the checkout and whether it is open as a workspace, and folds
- * its actions into the menu every other row in the tree carries. The branch the
- * checkout sits on belongs to the worktree, so nothing here repeats the
+ * The row names the checkout and whether it is open as a workspace. The branch
+ * the checkout sits on belongs to the worktree, so nothing here repeats the
  * repository's own state from the row above.
  *
- * Opening and closing share one seat, named for what a click does, so the row
- * reads as a state rather than as a pair of verbs. Closing the worktree drops
- * the plugin's record and leaves the checkout; removing deletes the checkout.
- * Both are on every row, and the confirmation behind removing says whether the
- * checkout is one this plugin cut or one it found.
+ * Opening and closing share one control, named for what a click does, so the row
+ * reads as a state rather than as a pair of verbs. Removing deletes the
+ * checkout, and the confirmation behind it says whether the checkout is one this
+ * plugin cut or one it found.
  */
-function WorktreeRow({ entry, busy, onRemove, onRelease, onToggleOpen, t }: {
+function WorktreeRow({ entry, busy, onRemove, onToggleOpen, t }: {
   entry: WorktreeStatus
   busy: boolean
   onRemove: () => void
-  onRelease: () => void
   onToggleOpen: () => void
   t: T
 }) {
@@ -358,20 +368,19 @@ function WorktreeRow({ entry, busy, onRemove, onRelease, onToggleOpen, t }: {
         {entry.error === undefined ? null : <span className={css.dim}>{entry.error}</span>}
       </span>
       <span className={css.trailing}>
+        <Button
+          size="sm"
+          icon={entry.open ? <IconFolderClose16 /> : <IconFolderOpenOutline16 />}
+          disabled={busy}
+          aria-label={controlLabel(t, entry.open ? 'closeWorktree' : 'openWorktree', entry.anchor.name)}
+          title={controlLabel(t, entry.open ? 'closeWorktree' : 'openWorktree', entry.anchor.name)}
+          onClick={onToggleOpen}
+        />
         <ActionsMenu
           name={entry.anchor.name}
           busy={busy}
           t={t}
-          actions={[
-            {
-              id: 'toggleOpen',
-              label: entry.open ? t('closeWorktree') : t('openWorktree'),
-              run: onToggleOpen,
-            },
-            // A checkout read straight from git has no record to release.
-            ...entry.held ? [{ id: 'release', label: t('releaseWorktree'), run: onRelease }] : [],
-            { id: 'remove', label: t('removeWorktree'), danger: true, run: onRemove },
-          ]}
+          actions={[{ id: 'remove', label: t('removeWorktree'), danger: true, run: onRemove }]}
         />
       </span>
     </div>
@@ -473,20 +482,25 @@ export function RemoteWorktreesSection(props: SectionProps) {
     <div className={css.section}>
       <div className={css.head}>
         <h3 className={css.title}>{t('title')}</h3>
-        <p className={css.subtitle}>{t('subtitle')}</p>
-      </div>
-
-      <div className={css.toolbar}>
-        <Button
-          variant="outline"
-          disabled={busy}
-          onClick={() => setDialog({ kind: 'machine' })}
-        >
-          {t('addMachine')}
-        </Button>
-        <Button disabled={busy} onClick={() => void refresh()}>
-          {t('refresh')}
-        </Button>
+        <div className={css.toolbar}>
+          <Button
+            size="sm"
+            icon={<IconRefreshOutline16 />}
+            disabled={busy}
+            aria-label={t('refresh')}
+            title={t('refresh')}
+            onClick={() => void refresh()}
+          />
+          <Button
+            size="sm"
+            variant="primary"
+            icon={<IconPlusOutline16 />}
+            disabled={busy}
+            aria-label={t('addMachine')}
+            title={t('addMachine')}
+            onClick={() => setDialog({ kind: 'machine' })}
+          />
+        </div>
       </div>
 
       {error === undefined ? null : (
@@ -528,6 +542,7 @@ export function RemoteWorktreesSection(props: SectionProps) {
                   keepContentWhenOpen
                   rowClassName={css.row}
                   leadingClassName={css.leading}
+                  chevronClassName={css.chevronHidden}
                   onToggle={() => toggle(openMachines, setOpenMachines, node.nodeId)}
                   collapsedContent={(
                     <span className={css.trailing}>
@@ -549,28 +564,39 @@ export function RemoteWorktreesSection(props: SectionProps) {
                       {note === undefined
                         ? <span className={css.srOnly}>{t(here ? 'status.local' : badge.key)}</span>
                         : <span className={css.meta}>{note}</span>}
-                      <ActionsMenu
-                        name={node.title}
-                        busy={busy}
-                        t={t}
-                        actions={[
-                          ...here ? [] : [state === 'ready'
-                            ? {
-                              id: 'disconnect',
-                              label: t('disconnect'),
-                              run: () => void mutate(() => props.disconnectNode(node.nodeId)),
-                            }
-                            : {
-                              id: 'connect',
-                              label: t('connect'),
-                              run: () => void mutate(() => props.connectNode(node.nodeId)),
-                            }],
-                          {
-                            id: 'addRepository',
-                            label: t('addRepository'),
-                            run: () => setDialog({ kind: 'repo', nodeId: node.nodeId }),
-                          },
-                          ...here ? [] : [{
+                      <Button
+                        size="sm"
+                        icon={<IconProjectAddOutline16 />}
+                        disabled={busy}
+                        aria-label={controlLabel(t, 'addRepository', node.title)}
+                        title={controlLabel(t, 'addRepository', node.title)}
+                        onClick={(event) => {
+                          // The row below folds on a click, and this sits in it.
+                          event.stopPropagation()
+                          setDialog({ kind: 'repo', nodeId: node.nodeId })
+                        }}
+                      />
+                      {here ? null : (
+                        <Button
+                          size="sm"
+                          icon={state === 'ready' ? <IconCloseOutline16 /> : <IconLinkOutline16 />}
+                          disabled={busy}
+                          aria-label={controlLabel(t, state === 'ready' ? 'disconnect' : 'connect', node.title)}
+                          title={controlLabel(t, state === 'ready' ? 'disconnect' : 'connect', node.title)}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            void mutate(() => (state === 'ready'
+                              ? props.disconnectNode(node.nodeId)
+                              : props.connectNode(node.nodeId)))
+                          }}
+                        />
+                      )}
+                      {here ? null : (
+                        <ActionsMenu
+                          name={node.title}
+                          busy={busy}
+                          t={t}
+                          actions={[{
                             id: 'removeMachine',
                             label: t('removeMachine'),
                             danger: true,
@@ -579,9 +605,9 @@ export function RemoteWorktreesSection(props: SectionProps) {
                               bodyKey: 'removeMachineBody',
                               run: () => props.removeNode(node.nodeId),
                             }),
-                          }],
-                        ]}
-                      />
+                          }]}
+                        />
+                      )}
                     </span>
                   )}
                 >
@@ -596,9 +622,7 @@ export function RemoteWorktreesSection(props: SectionProps) {
                         // Cutting a worktree needs git, and whether git owns the
                         // directory is a live fact: a plain directory can be
                         // worked in, and initialized on the machine later. The
-                        // menu carries that reason beside the control it
-                        // refuses, so the row itself stays silent.
-                        const why = entry.error ?? t('notARepository')
+                        // control that cuts one is refused rather than hidden.
                         // Opening a directory the section has never resolved
                         // needs the machine to spell the path; an anchor that
                         // already exists is registered locally, so changing its
@@ -615,54 +639,60 @@ export function RemoteWorktreesSection(props: SectionProps) {
                               keepContentWhenOpen
                               rowClassName={css.row}
                               leadingClassName={css.leading}
+                              chevronClassName={css.chevronHidden}
                               onToggle={() => toggle(openRepos, setOpenRepos, repo.repoId)}
                               collapsedContent={(
                                 <span className={css.trailing}>
+                                  <Button
+                                    size="sm"
+                                    icon={directory?.open === true
+                                      ? <IconFolderClose16 />
+                                      : <IconFolderOpenOutline16 />}
+                                    disabled={busy || cannotOpen}
+                                    aria-label={controlLabel(
+                                      t,
+                                      directory?.open === true ? 'closeWorktree' : 'openWorktree',
+                                      repo.name,
+                                    )}
+                                    title={controlLabel(
+                                      t,
+                                      directory?.open === true ? 'closeWorktree' : 'openWorktree',
+                                      repo.name,
+                                    )}
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      void mutate(() => (
+                                        directory?.open === true
+                                          ? props.closeDirectory(repo.repoId)
+                                          : props.openDirectory(repo.repoId)
+                                      ))
+                                    }}
+                                  />
+                                  <Button
+                                    size="sm"
+                                    icon={<IconBranchOutline16 />}
+                                    disabled={busy || !entry.git}
+                                    aria-label={controlLabel(t, 'newWorktree', repo.name)}
+                                    title={controlLabel(t, 'newWorktree', repo.name)}
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      setDialog({ kind: 'worktree', repo })
+                                    }}
+                                  />
                                   <ActionsMenu
                                     name={repo.name}
                                     busy={busy}
                                     t={t}
-                                    actions={[
-                                      {
-                                        id: 'newWorktree',
-                                        label: entry.git
-                                          ? t('newWorktree')
-                                          : <>{t('newWorktree')} <span className={css.dim}>{why}</span></>,
-                                        disabled: !entry.git,
-                                        run: () => setDialog({ kind: 'worktree', repo }),
-                                      },
-                                      {
-                                        id: 'directory',
-                                        // Nothing is open when the machine
-                                        // cannot be asked, so the label is the
-                                        // one that would open it, with the
-                                        // reason it cannot.
-                                        label: cannotOpen
-                                          ? (
-                                            <>
-                                              {t('openWorktree')}{' '}
-                                              <span className={css.dim}>{entry.error}</span>
-                                            </>
-                                          )
-                                          : directory?.open === true ? t('closeWorktree') : t('openWorktree'),
-                                        disabled: cannotOpen,
-                                        run: () => void mutate(() => (
-                                          directory?.open === true
-                                            ? props.closeDirectory(repo.repoId)
-                                            : props.openDirectory(repo.repoId)
-                                        )),
-                                      },
-                                      {
-                                        id: 'forgetRepository',
-                                        label: t('forgetRepository'),
-                                        danger: true,
-                                        run: () => confirm({
-                                          titleKey: 'removeRepositoryTitle',
-                                          bodyKey: 'removeRepositoryBody',
-                                          run: () => props.removeRepo(repo.repoId),
-                                        }),
-                                      },
-                                    ]}
+                                    actions={[{
+                                      id: 'forgetRepository',
+                                      label: t('forgetRepository'),
+                                      danger: true,
+                                      run: () => confirm({
+                                        titleKey: 'removeRepositoryTitle',
+                                        bodyKey: 'removeRepositoryBody',
+                                        run: () => props.removeRepo(repo.repoId),
+                                      }),
+                                    }]}
                                   />
                                 </span>
                               )}
@@ -689,12 +719,6 @@ export function RemoteWorktreesSection(props: SectionProps) {
                                             : 'removeAdoptedWorktreeBody',
                                           optionKey: 'removeWorktreeBranch',
                                           run: deleteBranch => props.removeWorktree(item.anchor.anchorId, deleteBranch),
-                                        })}
-                                        onRelease={() => confirm({
-                                          titleKey: 'releaseWorktreeTitle',
-                                          bodyKey: 'releaseWorktreeBody',
-                                          confirmKey: 'releaseWorktree',
-                                          run: () => props.releaseWorktree(item.anchor.anchorId),
                                         })}
                                       />
                                     ))}

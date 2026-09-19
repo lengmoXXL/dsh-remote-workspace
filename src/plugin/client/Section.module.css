@@ -17,7 +17,7 @@
   font-family: var(--dsw-font-family);
   font-size: 13px;
 }
-.head { display: flex; flex-direction: column; gap: 6px; }
+.head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .title { margin: 0; font-size: 14px; font-weight: 600; }
 .subtitle {
   margin: 0;
@@ -25,7 +25,8 @@
   font-size: 12px;
   line-height: 1.55;
 }
-.toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.toolbar { display: flex; align-items: center; gap: 6px; }
+.chevronHidden { display: none; }
 .alert {
   display: flex;
   align-items: flex-start;

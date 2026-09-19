@@ -84,6 +84,12 @@ function menuFor(name: string): RegExp {
   return new RegExp(`^(?:${prefix}): ${escape(name)}$`, 'i')
 }
 
+/** The accessible name one row's own control carries, which is the row-scoped action. */
+function controlFor(name: string, key: Key): RegExp {
+  const prefix = [zh[key], en[key]].map(escape).join('|')
+  return new RegExp(`^(?:${prefix}): ${escape(name)}$`, 'i')
+}
+
 /** An expression that holds when any of these labels is on screen. */
 function present(...keys: Key[]): string {
   const needles = keys.flatMap(key => [zh[key], en[key]]).map(text => JSON.stringify(text)).join(',')
@@ -132,6 +138,29 @@ function controlsFor(...keys: Key[]): string {
       + `.some(button => (button.textContent ?? '').trim() === label || button.title === label`
       + ` || button.getAttribute('aria-label') === label))`
   }).join(' && ')
+}
+
+/**
+ * Click one row's own control, once it is there to be clicked.
+ *
+ * A control is refused while its row is not actionable — a directory that is
+ * not a repository yet — or disabled while a mutation is in flight, so the
+ * click waits for the state rather than assuming it.
+ * @param page - the page to act on.
+ * @param name - the row the control belongs to.
+ * @param key - the action's locale key.
+ */
+async function clickRowControl(page: FirefoxPage, name: string, key: Key): Promise<void> {
+  await waitForEnabled(page, controlFor(name, key), `the ${key} control of ${name}`)
+  await clickByText(page, controlFor(name, key))
+}
+
+/** An expression that holds when one row's own control is on screen. */
+function rowControlPresent(name: string, key: Key): string {
+  const pattern = controlFor(name, key).source
+  return `[...document.querySelectorAll('button')].some(button => `
+    + `new RegExp(${JSON.stringify(pattern)}, 'i')`
+    + `.test(button.getAttribute('aria-label') ?? button.title ?? ''))`
 }
 
 /**
@@ -646,7 +675,7 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     await clickByText(page, /设置|Settings/i)
     await clearShellDialogs(page)
     await clickByText(page, anyOf('title'))
-    await waitFor(page, present('addMachine', 'refresh'), 'the section toolbar')
+    await waitFor(page, controlsFor('addMachine', 'refresh'), 'the section toolbar')
     await waitForText(page, 'e2e daemon', 'the seeded machine row')
     await shot('01-section')
 
@@ -685,7 +714,7 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     // A collapsed machine renders no controls, so this machine's repository
     // form is the only one on the page: the built-in local machine, which is
     // listed first, is still folded.
-    await chooseAction(page, 'e2e daemon', 'addRepository')
+    await clickRowControl(page, 'e2e daemon', 'addRepository')
     await waitForForm(page, exact('addRepository'), 'the add-repository form')
     await shot('04-repository-form')
     await fillDialogInputByPlaceholder(
@@ -710,7 +739,7 @@ test('a remote worktree is created and removed through the browser', { timeout: 
 
     // Cut a worktree and check the machine actually holds it.
     await clickByText(page, /demo-repo/)
-    await chooseAction(page, 'demo-repo', 'newWorktree')
+    await clickRowControl(page, 'demo-repo', 'newWorktree')
     await waitForForm(page, exact('newWorktree'), 'the new-worktree form')
     // The path field is filled from the start: the name finishes it, so an
     // empty name already shows the directory the checkout goes into.
@@ -732,11 +761,11 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     await clickInDialog(page, exact('create'))
     await waitForFormGone(page, exact('newWorktree'), 'the new-worktree form to close')
     await waitForText(page, 'verify', 'the worktree row')
-    // A checkout the plugin cut offers both ways out, in the row's own menu:
-    // closing it (which leaves the checkout) and removing it (which deletes it).
-    await openMenu(page, 'verify')
-    await waitFor(page, controlsFor('releaseWorktree', 'removeWorktree'), 'both row actions')
-    await closeMenu(page)
+    // A checkout the plugin cut opens from its own row control and is deleted
+    // from the row's menu.
+    // Cutting a worktree opens its workspace, so the row offers closing it.
+    await waitFor(page, rowControlPresent('verify', 'closeWorktree'), 'the row to offer closing its workspace')
+    await waitForRowActions(page, 'verify', ['removeWorktree'])
     const anchor = join(
       instance.home, 'remote-worktrees', 'anchors', instance.nodeId, 'demo-repo', 'verify',
     )
@@ -785,7 +814,7 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     // The same control, with the option switched on, takes the branch too. This
     // one is placed by hand: the field arrives holding the default the host
     // would use, and the caller may replace it.
-    await chooseAction(page, 'demo-repo', 'newWorktree')
+    await clickRowControl(page, 'demo-repo', 'newWorktree')
     await waitForForm(page, exact('newWorktree'), 'the second new-worktree form')
     await fillDialogInputByPlaceholder(page, new RegExp(escape(en.placeholderWorktreeName)), 'scratch')
     const defaultCheckout = join(instance.userHome, '.dsh', 'worktrees', 'demo-repo', 'scratch')
@@ -823,29 +852,12 @@ test('a remote worktree is created and removed through the browser', { timeout: 
 
     // A checkout the plugin never cut is a row already, read straight from the
     // machine's git; opening it adopts it and registers it as a workspace.
-    await chooseAction(page, 'hand-cut', 'openWorktree')
+    await clickRowControl(page, 'hand-cut', 'openWorktree')
     await waitFor(page, `document.body.innerText.includes('hand-cut · demo-repo')`, 'the adopted workspace')
-    // A checkout the plugin found offers both ways out as well.
-    await waitForRowActions(page, 'hand-cut', ['releaseWorktree', 'removeWorktree'])
+    // A checkout the plugin found is the operator's to remove as well.
+    await waitFor(page, rowControlPresent('hand-cut', 'closeWorktree'), 'the row to offer closing its workspace')
+    await waitForRowActions(page, 'hand-cut', ['removeWorktree'])
     await shot('07b-adopted-worktree')
-
-    await chooseAction(page, 'hand-cut', 'releaseWorktree')
-    await waitForForm(page, anyOf('releaseWorktreeTitle'), 'the release confirmation')
-    // The confirming button names the action: releasing is not removing.
-    await clickInDialog(page, exact('releaseWorktree'))
-    // Git still lists the checkout, so releasing only drops the plugin's record:
-    // the row survives as one it has not adopted, offering open and remove.
-    await waitForRowActions(page, 'hand-cut', ['openWorktree', 'removeWorktree'])
-    assert.match(
-      await readFile(join(instance.root, 'remote-root', 'hand-cut', 'README.md'), 'utf8'),
-      /fixture/,
-      'the released checkout is still on the machine',
-    )
-
-    // The same checkout can be opened again and, this time, deleted: one the
-    // plugin found on the machine is still the operator's to remove.
-    await chooseAction(page, 'hand-cut', 'openWorktree')
-    await waitFor(page, `document.body.innerText.includes('hand-cut · demo-repo')`, 'the re-opened workspace')
 
     await chooseAction(page, 'hand-cut', 'removeWorktree')
     await waitForForm(page, anyOf('removeWorktreeTitle'), 'the remove confirmation')
@@ -855,7 +867,7 @@ test('a remote worktree is created and removed through the browser', { timeout: 
 
     // A directory nobody initialized registers, opens as a workspace of its
     // own, and refuses worktrees until someone makes it a repository.
-    await chooseAction(page, 'e2e daemon', 'addRepository')
+    await clickRowControl(page, 'e2e daemon', 'addRepository')
     await waitForForm(page, exact('addRepository'), 'the add-repository form for the plain directory')
     await fillDialogInputByPlaceholder(page, new RegExp(escape(en.placeholderRepoPath)), instance.plainDir)
     await waitForEnabled(page, exact('create'), 'the form to accept the plain directory')
@@ -865,26 +877,23 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     // Both repository rows are on screen, and the plain directory is the one
     // registered second.
     await clickByText(page, /plain-dir/)
-    // The refused action says why beside itself, and only the repository
-    // registered first can be cut from.
-    await openMenu(page, 'plain-dir')
-    await waitFor(page, present('notARepository'), 'the menu to carry the reason')
+    // Only the repository registered first can be cut from: the plain
+    // directory's control is refused rather than hidden.
     assert.equal(
       await page.evaluate<boolean>(`
         (() => {
-          const needles = ${JSON.stringify([zh.notARepository, en.notARepository])}
-          const item = [...document.querySelectorAll('[role="menu"] button[role="menuitem"]')]
-            .find(button => needles.some(needle => (button.textContent ?? '').includes(needle)))
-          return item !== undefined && item.disabled
+          const needles = ${JSON.stringify([zh.newWorktree, en.newWorktree])}
+          const control = [...document.querySelectorAll('button')].find(button =>
+            needles.some(needle => (button.getAttribute('aria-label') ?? '').startsWith(needle + ': plain-dir')))
+          return control !== undefined && control.disabled
         })()`),
       true,
       'the plain directory refuses a worktree',
     )
-    await closeMenu(page)
     await shot('08-plain-directory')
 
     // Opening it as a workspace asks the machine for the path and nothing else.
-    await chooseAction(page, 'plain-dir', 'openWorktree')
+    await clickRowControl(page, 'plain-dir', 'openWorktree')
     const plainAnchor = join(
       instance.home, 'remote-worktrees', 'anchors', instance.nodeId, 'plain-dir', '.self',
     )
@@ -911,7 +920,7 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     await clickByText(page, exact('refresh'))
     await shot('09-directory-initialized')
 
-    await chooseAction(page, 'plain-dir', 'newWorktree')
+    await clickRowControl(page, 'plain-dir', 'newWorktree')
     await waitForForm(page, exact('newWorktree'), 'the initialized directory form')
     await fillDialogInputByPlaceholder(page, new RegExp(escape(en.placeholderWorktreeName)), 'plain')
     await waitForEnabled(page, exact('create'), 'the form to accept the worktree')
@@ -930,7 +939,7 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     // The local machine's title is the row to click, and it leads the section:
     // once open, its controls are the first of their kind on the page.
     await clickByText(page, /^Local/)
-    await chooseAction(page, 'Local', 'addRepository')
+    await clickRowControl(page, 'Local', 'addRepository')
     await waitForForm(page, exact('addRepository'), 'the add-repository form for this host')
     await fillDialogInputByPlaceholder(page, new RegExp(escape(en.placeholderRepoPath)), instance.localRepo)
     await waitForEnabled(page, exact('create'), "the form to accept this host's repository")
@@ -948,7 +957,7 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     // The local machine leads the section, so its repository row is the first
     // one on the page once it is open.
     await clickByText(page, /local-repo/)
-    await chooseAction(page, 'local-repo', 'newWorktree')
+    await clickRowControl(page, 'local-repo', 'newWorktree')
     await waitForForm(page, exact('newWorktree'), 'the local new-worktree form')
     await fillDialogInputByPlaceholder(page, new RegExp(escape(en.placeholderWorktreeName)), 'here')
     await waitForEnabled(page, exact('create'), 'the form to accept the local worktree')

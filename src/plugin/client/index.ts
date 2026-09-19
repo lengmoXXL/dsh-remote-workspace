@@ -95,9 +95,6 @@ function sectionFace(t: Translate): RemoteWorktreesFace {
     async createWorktree(draft) {
       await call(t, '/worktrees', { method: 'POST', body: JSON.stringify(draft) })
     },
-    async releaseWorktree(anchorId) {
-      await call(t, `/worktrees/${encodeURIComponent(anchorId)}/release`, { method: 'POST' })
-    },
     async removeWorktree(anchorId, deleteBranch) {
       const query = new URLSearchParams({ force: 'true', deleteBranch: String(deleteBranch) })
       await call(t, `/worktrees/${encodeURIComponent(anchorId)}?${query.toString()}`, { method: 'DELETE' })
