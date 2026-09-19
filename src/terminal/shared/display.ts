@@ -36,7 +36,10 @@ export interface TerminalDisplaySettings {
 export const TERMINAL_DISPLAY_DEFAULTS: TerminalDisplaySettings = {
   fontFamily: 'monospace',
   fontSize: 12,
-  lineHeight: 1.2,
+  // One line box per cell. The renderer draws the font's own box-drawing
+  // glyphs, which fill the line box and nothing more, so a taller cell parts
+  // every vertical run — a tree's guides, a window's frame — into dashes.
+  lineHeight: 1,
   cursorBlink: true,
   scrollback: 50_000,
 }
