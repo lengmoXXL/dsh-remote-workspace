@@ -230,8 +230,8 @@ impl ManagedTerminal {
         )
     }
 
-    /// Deliver bytes to the terminal input.
-    fn write(&self, data: &[u8]) -> Result<()> {
+    /// Refuse work on a session that has already ended.
+    fn ensure_live(&self) -> Result<()> {
         if self
             .outcome
             .lock()
@@ -240,6 +240,12 @@ impl ManagedTerminal {
         {
             return Err(self.exited());
         }
+        Ok(())
+    }
+
+    /// Deliver bytes to the terminal input.
+    fn write(&self, data: &[u8]) -> Result<()> {
+        self.ensure_live()?;
         let guard = self.master.lock().expect("terminal master poisoned");
         let Some(fd) = *guard else {
             return Err(self.exited());
@@ -270,14 +276,7 @@ impl ManagedTerminal {
     /// size actually changed, which is how a full-screen program redraws; a
     /// terminal whose size is already the requested one is left silent.
     fn resize(&self, cols: u16, rows: u16) -> Result<()> {
-        if self
-            .outcome
-            .lock()
-            .expect("terminal outcome poisoned")
-            .is_some()
-        {
-            return Err(self.exited());
-        }
+        self.ensure_live()?;
         let guard = self.master.lock().expect("terminal master poisoned");
         let Some(fd) = *guard else {
             return Err(self.exited());
