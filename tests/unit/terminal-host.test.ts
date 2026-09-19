@@ -195,7 +195,9 @@ async function opened(options: {
   readonly cwd?: string
   readonly cols?: number
   readonly rows?: number
+  readonly detachGraceMs?: number
 } = {}): Promise<{
+  ctx: Context
   terminal: FakeTerminal
   browser: FakeSocket
   requests: TtySpawnRequest[]
@@ -208,11 +210,12 @@ async function opened(options: {
     requests.push(request)
     return terminal.handle
   }
-  const registry = terminalRegistry(spawn)
-  attachTerminal(ttyContext(spawn, options.cwd ?? '/w/live'), registry, browser.socket)
+  const registry = terminalRegistry(spawn, options.detachGraceMs)
+  const ctx = ttyContext(spawn, options.cwd ?? '/w/live')
+  attachTerminal(ctx, registry, browser.socket)
   browser.send({ t: 'open', sessionId: 'session-1', cols: options.cols ?? 80, rows: options.rows ?? 24 })
   await settle()
-  return { terminal, browser, requests, registry }
+  return { ctx, terminal, browser, requests, registry }
 }
 
 test('a terminal is allocated through the seam in the Session workspace', async () => {
@@ -312,13 +315,7 @@ test('a detached terminal outlives the socket, and the process exiting releases 
 })
 
 test('an attach frame reattaches to a detached terminal and replays its output', async () => {
-  const terminal = fakeTerminal()
-  const registry = terminalRegistry(async () => terminal.handle)
-  const ctx = ttyContext(async () => terminal.handle, '/w/live')
-  const first = fakeSocket()
-  attachTerminal(ctx, registry, first.socket)
-  first.send({ t: 'open', sessionId: 'session-1', cols: 80, rows: 24 })
-  await settle()
+  const { terminal, browser: first, ctx, registry } = await opened()
   terminal.emit('history\n')
   await settle()
 
@@ -359,13 +356,7 @@ test('an attach frame for a terminal that is gone answers with a readable error'
 })
 
 test('an attach frame cannot reach a terminal another Session owns', async () => {
-  const terminal = fakeTerminal()
-  const registry = terminalRegistry(async () => terminal.handle)
-  const ctx = ttyContext(async () => terminal.handle, '/w/live')
-  const first = fakeSocket()
-  attachTerminal(ctx, registry, first.socket)
-  first.send({ t: 'open', sessionId: 'session-1', cols: 80, rows: 24 })
-  await settle()
+  const { terminal, ctx, registry } = await opened()
 
   // The id is known, but it belongs to another Session: the attach is refused
   // instead of replaying the shell, so nothing crosses the boundary.
@@ -383,18 +374,13 @@ test('an attach frame cannot reach a terminal another Session owns', async () =>
 })
 
 test('a detached terminal is released when its configured valve expires', async () => {
-  const terminal = fakeTerminal()
-  const registry = terminalRegistry(async () => terminal.handle, 25)
-  const browser = fakeSocket()
-  attachTerminal(ttyContext(async () => terminal.handle, '/w/live'), registry, browser.socket)
-  browser.send({ t: 'open', sessionId: 'session-1', cols: 80, rows: 24 })
-  await settle()
+  const { terminal, browser, registry } = await opened({ detachGraceMs: 25 })
 
   browser.close()
   await settle()
   assert.equal(terminal.terminations(), 0)
 
-  await new Promise(resolve => { setTimeout(resolve, 80) })
+  await new Promise(resolve => setTimeout(resolve, 80))
   assert.equal(terminal.terminations(), 1)
   assert.deepEqual(registry.listFor('session-1'), [])
 })
