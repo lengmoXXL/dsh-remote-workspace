@@ -196,14 +196,7 @@ impl GitBackend {
         }
         if ancestor.status != Some(1) {
             if is_missing_ref(&ancestor) {
-                return Err(Failure::new(
-                    "GIT_REF_NOT_FOUND",
-                    format!(
-                        "cannot merge \"{branch}\" into \"{}\": {}",
-                        repo.display(),
-                        detail(&ancestor)
-                    ),
-                ));
+                return Err(merge_ref_not_found(&repo, branch, &ancestor));
             }
             return Err(command_failed(&repo, &ancestor));
         }
@@ -240,17 +233,22 @@ impl GitBackend {
             ));
         }
         if is_missing_ref(&outcome) {
-            return Err(Failure::new(
-                "GIT_REF_NOT_FOUND",
-                format!(
-                    "cannot merge \"{branch}\" into \"{}\": {}",
-                    repo.display(),
-                    detail(&outcome)
-                ),
-            ));
+            return Err(merge_ref_not_found(&repo, branch, &outcome));
         }
         Err(command_failed(&repo, &outcome))
     }
+}
+
+/// The refusal for a merge that names a ref git cannot find.
+fn merge_ref_not_found(repo: &Path, branch: &str, outcome: &GitOutcome) -> Failure {
+    Failure::new(
+        "GIT_REF_NOT_FOUND",
+        format!(
+            "cannot merge \"{branch}\" into \"{}\": {}",
+            repo.display(),
+            detail(outcome)
+        ),
+    )
 }
 
 /// Run one git command with a bounded capture and a killing timeout.
