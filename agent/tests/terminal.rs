@@ -165,6 +165,26 @@ async fn an_unknown_terminal_is_reported_rather_than_ignored() {
 }
 
 #[tokio::test]
+async fn a_spawn_after_close_ends_the_terminal_instead_of_publishing_it() {
+    let fixture = TempDir::new("drw-term-closed");
+    let term = TerminalBackend::new();
+    term.close();
+
+    let result = term
+        .spawn(spec(fixture.path(), &["/bin/sh", "-c", "sleep 30"]))
+        .expect("a closed backend answers the spawn it already accepted");
+    let id = term_id(result.clone());
+    let pid = result["pid"].as_i64().expect("pid") as i32;
+    assert_eq!(term.read(&id, 0).unwrap_err().code, "SP_NO_SUCH_TERMINAL");
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while unsafe { libc::kill(pid, 0) } == 0 {
+        assert!(Instant::now() < deadline, "the late terminal is still alive");
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+}
+
+#[tokio::test]
 async fn refuses_a_program_or_argument_holding_a_nul() {
     let fixture = TempDir::new("drw-term-nul");
     let term = TerminalBackend::new();
