@@ -37,6 +37,7 @@ import { SandboxBashExecutor } from '@deepseek-ai/dsh-bash-sandbox'
 import { SandboxedFileSystem } from '@deepseek-ai/dsh-fs-sandbox'
 import { LocalSubprocessRuntime } from '@deepseek-ai/dsh-subprocess-local'
 import { LocalTtyRuntime } from './local/tty.ts'
+import { DEFAULT_TTY_GRACE_MS } from './tty.ts'
 import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
 // Type-only: the settings service merge (ctx.settings) the display namespace is
 // registered through.
@@ -166,7 +167,7 @@ export interface Config {
    * unset.
    */
   shellArgs?: string[]
-  /** TERM-to-KILL grace for one terminal session, in milliseconds. Defaults to 3000. */
+  /** TERM-to-KILL grace for one terminal session, in milliseconds. */
   graceMs?: number
   /**
    * Safety valve: how long a terminal whose browser socket went away is kept,
@@ -364,7 +365,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     // A terminal is the only consumer here that cares, and both names are what
     // every full-screen program reads to decide what it may draw.
     env: { TERM: 'xterm-256color', COLORTERM: 'truecolor' },
-    graceMs: config.graceMs ?? 3000,
+    graceMs: config.graceMs ?? DEFAULT_TTY_GRACE_MS,
     detachGraceMs: config.detachGraceMs ?? 0,
   }
 

@@ -31,6 +31,12 @@ export interface TtyOutcome {
   readonly signal: NodeJS.Signals | null
 }
 
+/**
+ * Grace a provider gives a terminal between the terminate signal and the kill
+ * that follows it, when the caller names none.
+ */
+export const DEFAULT_TTY_GRACE_MS = 3000
+
 /** What one terminal is asked for. */
 export interface TtySpawnRequest {
   /** Program and arguments, resolved on the machine that runs them. */
@@ -43,7 +49,10 @@ export interface TtySpawnRequest {
   readonly cols: number
   /** Initial window size, in rows. */
   readonly rows: number
-  /** Milliseconds between the terminate signal and the kill that follows it. */
+  /**
+   * Milliseconds between the terminate signal and the kill that follows it;
+   * {@link DEFAULT_TTY_GRACE_MS} when omitted.
+   */
   readonly graceMs?: number
 }
 

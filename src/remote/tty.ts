@@ -18,6 +18,7 @@
 
 import { StringDecoder } from 'node:string_decoder'
 import { PassThrough } from 'node:stream'
+import { DEFAULT_TTY_GRACE_MS } from '../tty.ts'
 import type { TtyHandle, TtyOutcome, TtySpawnRequest } from '../tty.ts'
 
 /**
@@ -28,9 +29,6 @@ import type { TtyHandle, TtyOutcome, TtySpawnRequest } from '../tty.ts'
  * enough that an idle terminal does not flood the connection.
  */
 const POLL_MS = 40
-
-/** Grace the daemon is given when the caller names none, matching the local provider. */
-const DEFAULT_GRACE_MS = 3000
 
 /** One terminal allocation, as the daemon's wire carries it. */
 export interface TtyWireSpawnRequest {
@@ -123,7 +121,7 @@ export async function createRemoteTty(
     cwd: request.cwd,
     rows: request.rows,
     cols: request.cols,
-    graceMs: request.graceMs ?? DEFAULT_GRACE_MS,
+    graceMs: request.graceMs ?? DEFAULT_TTY_GRACE_MS,
     ...request.env === undefined ? {} : { env: request.env },
   })
 

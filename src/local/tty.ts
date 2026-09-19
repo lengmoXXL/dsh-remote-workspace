@@ -17,14 +17,11 @@
 import { constants } from 'node:os'
 import { PassThrough } from 'node:stream'
 import * as nodePty from 'node-pty'
-import { TtyRuntime } from '../tty.ts'
+import { DEFAULT_TTY_GRACE_MS, TtyRuntime } from '../tty.ts'
 import type { TtyHandle, TtyOutcome, TtySpawnRequest } from '../tty.ts'
 
 /** What a PTY calls itself when the caller names no terminal type. */
 const TERM = 'xterm-256color'
-
-/** Grace after the terminate signal before the kill follows it. */
-const DEFAULT_GRACE_MS = 3000
 
 /** How long a killed terminal is given to report its exit before the wait ends. */
 const KILL_SETTLE_MS = 2000
@@ -144,6 +141,6 @@ export class LocalTtyRuntime extends TtyRuntime {
       cwd: request.cwd,
       env: spawnEnv(request.env),
     })
-    return new LocalTtyHandle(terminal, request.graceMs ?? DEFAULT_GRACE_MS)
+    return new LocalTtyHandle(terminal, request.graceMs ?? DEFAULT_TTY_GRACE_MS)
   }
 }
