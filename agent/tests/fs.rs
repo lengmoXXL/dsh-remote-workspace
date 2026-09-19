@@ -3,7 +3,7 @@
 mod common;
 
 use common::TempDir;
-use dsh_remote_agent::failure::Failure;
+use dsh_remote_agent::failure::{Failure, INVALID_PARAMS};
 use dsh_remote_agent::fs::FsBackend;
 use serde_json::{json, Value};
 use std::path::Path;
@@ -264,6 +264,30 @@ fn an_edit_preserves_the_file_line_ending_style_and_reports_normalized_text() {
         std::fs::read_to_string(&path).unwrap(),
         "one\r\nTWO\r\nthree\r\n"
     );
+}
+
+#[test]
+fn a_malformed_edit_is_refused_as_invalid_params_naming_the_field() {
+    let dir = TempDir::new("drw-fs-bad-edit");
+    let fs = backend(dir.path());
+    let path = dir.join("code.txt").to_string_lossy().into_owned();
+    std::fs::write(&path, "let a = 1;\n").unwrap();
+
+    // The wire layer validates that "edit" is an object; its fields are read
+    // here, and each one refuses with the same code the layer above uses.
+    for bad in [
+        json!({ "oldString": 7, "newString": "x", "replaceAll": false }),
+        json!({ "oldString": "a", "newString": null, "replaceAll": false }),
+        json!({ "oldString": "a", "newString": "x", "replaceAll": "yes" }),
+    ] {
+        let failure = fs.edit_text(&path, &bad, None).unwrap_err();
+        assert_eq!(failure.rpc_code, INVALID_PARAMS);
+        assert!(
+            failure.message.contains("edit."),
+            "the refusal names the field: {}",
+            failure.message
+        );
+    }
 }
 
 #[test]

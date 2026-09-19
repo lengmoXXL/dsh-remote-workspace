@@ -2,8 +2,10 @@
 //!
 //! One method table maps a plugin method onto a backend call, and
 //! the readers beside it turn unvalidated JSON into the parameters that table
-//! passes on: a request that does not match its method's parameters fails as
-//! `InvalidParams` before any backend sees it.
+//! passes on: a request whose shape does not match its method fails as
+//! `InvalidParams` here, and a nested shape these readers hand on — `edit`'s
+//! fields, which only the filesystem backend can judge — fails with the same
+//! code where it is read.
 //!
 //! @module dsh-remote-agent/wire
 
