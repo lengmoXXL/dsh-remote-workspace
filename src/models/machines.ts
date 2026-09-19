@@ -13,13 +13,10 @@
  * @module dsh-remote-workspace/models/machines
  */
 
-import type { NodeChannel } from '../remote/client.ts'
-import type { ConnectOptions, ConnectedNode } from '../remote/client.ts'
-import { NodeRequestError } from '../remote/client.ts'
-import { connectNode } from '../remote/client.ts'
+import type { ConnectOptions, ConnectedNode, NodeChannel } from '../remote/client.ts'
+import { NodeRequestError, connectNode } from '../remote/client.ts'
 import type { NodeInfo } from '../remote/protocol.ts'
-import type { NodeRecord } from '../storage/nodes.ts'
-import type { NodeId } from '../storage/nodes.ts'
+import type { NodeId, NodeRecord } from '../storage/nodes.ts'
 import { DEFAULT_FORWARD_TIMEOUT_MS, openTunnel } from '../remote/ssh.ts'
 import type { AgentEndpoint, AgentProgress, EnsureAgentOptions } from '../remote/agent/install.ts'
 import { AGENT_VERSION, ensureAgent } from '../remote/agent/install.ts'
