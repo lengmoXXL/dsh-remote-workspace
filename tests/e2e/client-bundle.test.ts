@@ -107,7 +107,11 @@ async function loadBundle(): Promise<LoadedEntry> {
 /** One resource open the terminal panel asked the right Sidebar for. */
 interface OpenedTab {
   readonly address: string
-  readonly options: { readonly kind?: string; readonly revealIfOpened?: boolean } | undefined
+  readonly options: {
+    readonly kind?: string
+    readonly paneId?: string
+    readonly revealIfOpened?: boolean
+  } | undefined
 }
 
 /** The stub context `apply` is driven with. */
@@ -178,7 +182,7 @@ function stubContext(): {
     sidebarRight: {
       openResource: (
         address: string,
-        options?: { readonly kind?: string; readonly revealIfOpened?: boolean },
+        options?: { readonly kind?: string; readonly paneId?: string; readonly revealIfOpened?: boolean },
       ) => {
         opened.push({ address, options })
       },
@@ -229,19 +233,26 @@ test('the terminal panel opens a sibling tab as a duplicate the Sidebar permits'
   ;(exports['apply'] as (ctx: unknown) => void)(ctx)
 
   const body = registrations.find(entry => entry.name === 'sidebar.right.pane.tab')
-  const face = (body?.inject as (() => { openAnother(): void }) | undefined)?.()
+  const face = (body?.inject as (() => { openAnother(paneId: string): void }) | undefined)?.()
   assert.notEqual(face, undefined, 'the terminal body carries an injected face')
-  face?.openAnother()
-  face?.openAnother()
+  face?.openAnother('pane-1')
+  face?.openAnother('pane-1')
 
   // A page kind deduplicates inside its pane, so the sibling is a resource tab
   // at an address of its own with `revealIfOpened: false` — the option that
   // permits the duplicate.
   assert.equal(opened.length, 2)
   assert.equal(new Set(opened.map(entry => entry.address)).size, 2, 'each sibling gets its own address')
+  // The asking panel names its pane: the Sidebar's own default is the active
+  // pane, which is a different one as soon as two are on screen.
+  assert.deepEqual(
+    opened.map(entry => entry.options?.paneId),
+    ['pane-1', 'pane-1'],
+    'a sibling lands in the pane its panel named',
+  )
   for (const entry of opened) {
     assert.match(entry.address, /^dsh-resource:\/\/terminal\/tab\/[^/]+$/)
-    assert.deepEqual(entry.options, { kind: 'terminal', revealIfOpened: false })
+    assert.deepEqual(entry.options, { kind: 'terminal', paneId: 'pane-1', revealIfOpened: false })
   }
 })
 

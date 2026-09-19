@@ -63,7 +63,7 @@ export type TerminalBodyProps =
 export function TerminalBody(
   { useTabInfo, sessionId, list, close, openAnother, showTab, t }: TerminalBodyProps,
 ): ReactNode {
-  const { tab } = useTabInfo()
+  const { panel, tab } = useTabInfo()
   const target = useSyncExternalStore(subscribeTerminalTargets, () => terminalTarget(sessionId, tab.id))
   const screen = useRef<HTMLDivElement | null>(null)
   const [state, setState] = useState<TerminalState>(() => terminalState(sessionId, tab.id))
@@ -122,7 +122,7 @@ export function TerminalBody(
           data-terminal-manage
           aria-label={t('action.manage')}
           title={t('action.manage')}
-          onClick={openAnother}
+          onClick={() => { openAnother(panel.id) }}
         />
       </div>
       <div className={css.screen} ref={screen} />

@@ -30,7 +30,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 // Type-only: pulls the tab registry merge (ctx.sidebarRightTabs) and its seats.
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
-import type { SidebarRightTabDefinition, TabId } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
+import type { PaneId, SidebarRightTabDefinition, TabId } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: the settings scope service merge (ctx.settingsScope) this half
 // binds the display preferences through.
@@ -71,8 +71,12 @@ export interface TerminalPanelFace {
   list(sessionId: string): Promise<readonly TerminalSummary[]>
   /** End one terminal, wherever its tab went. */
   close(id: string): Promise<void>
-  /** Open a shell-less terminal tab beside the one this panel is in. */
-  openAnother(): void
+  /**
+   * Open a shell-less terminal tab beside the one this panel is in.
+   * @param paneId - the pane the asking panel lives in, so the sibling lands
+   *   there rather than in whichever pane happens to be active.
+   */
+  openAnother(paneId: PaneId): void
   /** Bring forward the tab already showing a terminal. */
   showTab(tabId: string): void
 }
@@ -107,7 +111,7 @@ function terminalDefinition(t: Translate<TerminalKey>): SidebarRightTabDefinitio
  */
 function panelFace(
   t: Translate<TerminalKey>,
-  openAnother: () => void,
+  openAnother: (paneId: PaneId) => void,
   showTab: (tabId: string) => void,
 ): TerminalPanelFace {
   const failure = (status: number): string => t('requestFailed', { status })
@@ -173,11 +177,14 @@ export function mountTerminal(ctx: Context): void {
   // no other tab shares, and starts shell-less on its own chooser.
   const face = panelFace(
     t,
-    () => {
+    (paneId) => {
       // `crypto.randomUUID` needs a secure origin; this only has to be unique.
       const address = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
       ctx.sidebarRight.openResource(`dsh-resource://terminal/tab/${address}`, {
         kind: TERMINAL_KIND,
+        // The asking panel names its own pane: the server's default is the
+        // active one, which is a different pane as soon as two are on screen.
+        paneId,
         revealIfOpened: false,
       })
     },
