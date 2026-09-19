@@ -1058,30 +1058,34 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     await waitFor(page, `${TERMINAL_TEXT}.includes('aftertab=7')`, 'the marker in the shell a closed tab left')
     await shot('12b-reattached-after-tab-close')
 
-    // Ending it is explicit now: End terminal sends `close` through the socket
-    // the panel holds, the body falls back to the chooser, and the shell is gone
-    // rather than detached.
+    // Ending a shell is explicit, and its control lives where the shells are
+    // listed: the panel offers no end button, so the manage control opens the
+    // chooser in a tab of its own and the row's close ends the shell through the
+    // host route — the row leaves the list rather than showing up detached.
     await clearShellDialogs(page)
-    await page.evaluate(`document.querySelector('[data-terminal-end]').click()`)
+    await openAnotherTerminal(page)
     await waitFor(
       page,
-      `document.querySelector('[data-terminal-picker]') !== null`,
-      'the chooser after ending the terminal',
+      `document.querySelector('[data-terminal-choice="${firstId}"]') !== null`,
+      'the shell to end in the chooser',
     )
+    await page.evaluate(`document.querySelector('[data-terminal-close="${firstId}"]').click()`)
     await waitFor(
       page,
       `document.querySelector('[data-terminal-choice="${firstId}"]') === null`,
       'the ended terminal to leave the chooser',
     )
     const endedProbe = await attachAndRead(page, firstId)
-    assert.equal(endedProbe.ready, null, 'End terminal left a shell to reattach to')
+    assert.equal(endedProbe.ready, null, 'ending the terminal left a shell to reattach to')
     assert.match(String(endedProbe.error), /is open in this session|exited/)
     await shot('12c-terminal-ended')
 
-    // The tab stayed open on the shell-less chooser, so the New terminal entry
-    // it now shows opens the next shell.
+    // The tab that held that shell is still open on it, and this run works one
+    // tab at a time; the chooser this one stands on is where the next shell is
+    // opened, and its chip is the active one.
+    await closeTabByTitle(page, firstTerminal)
     await page.evaluate(`document.querySelector('[data-terminal-new]').click()`)
-    const secondTerminal = await waitForTerminalChip(page)
+    const secondTerminal = await waitForActiveTerminalChip(page)
     assert.notEqual(secondTerminal, firstTerminal, 'a reopened terminal is a new terminal')
     await shot('12-terminal-reopened')
 

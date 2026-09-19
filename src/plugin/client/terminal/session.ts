@@ -13,10 +13,9 @@
  * reattaches to it. Because the shell restores no tab across a reload, that id
  * is also written to `localStorage` per Session: the chooser lists the shell
  * this page last used first, so coming back to it is one click. Ending a shell
- * is explicit and is the only thing that forgets the id — {@link endTerminal}
- * sends the `close` frame through the socket this page holds, the chooser's
- * close reaches the host route, and a shell that exits or fails to attach has
- * nothing left to come back to.
+ * is explicit and is the only thing that forgets the id: the chooser's close
+ * reaches the host route, and a shell that exits or fails to attach has nothing
+ * left to come back to.
  *
  * Which shell a tab shows is decided before its first terminal exists: a tab
  * whose person has not chosen yet is shown the chooser, and {@link chooseTerminal}
@@ -506,7 +505,8 @@ function scheduleReconnect(entry: Entry): void {
  *
  * The socket close is what detaches: the host keeps the PTY and its retained
  * output, so the id is still remembered for a reattach. Ending the shell is
- * explicit — {@link endTerminal} — or the process doing it on its own.
+ * explicit — the chooser's close reaches the host route — or the process doing
+ * it on its own.
  * @param key - the Session-and-tab key to drop.
  */
 function dispose(key: string): void {
@@ -519,37 +519,11 @@ function dispose(key: string): void {
   emitLabels()
   if (entry.reconnectTimer !== undefined) clearTimeout(entry.reconnectTimer)
   entry.observer.disconnect()
-  // No `close` frame: closing the socket only detaches, and the host keeps the
-  // shell for as long as its process lives.
+  // Closing the socket only detaches: the host keeps the shell for as long as
+  // its process lives.
   entry.socket.close(1000, 'detached')
   entry.term.dispose()
   entry.element.remove()
-}
-
-/**
- * End one tab's terminal now, through the socket this page already holds.
- *
- * The `close` frame is what ends a shell at once, rather than leaving it
- * detached the way a dropped socket does. The tab stays open: clearing its
- * choice sends the body back to the chooser, where another shell can be picked.
- * A socket that has already dropped cannot carry the frame, so the registry id
- * comes back for the caller to end through the host's route.
- * @param sessionId - the Session the tab belongs to.
- * @param tabId - the Sidebar tab record's id.
- * @returns the registry id a caller must end over the host route, when the socket could not carry the frame.
- */
-export function endTerminal(sessionId: string, tabId: string): string | undefined {
-  const entry = entries.get(tabKey(sessionId, tabId))
-  let stranded: string | undefined
-  if (entry?.id !== undefined) {
-    forget(entry.sessionId, entry.id)
-    if (entry.socket.readyState === WebSocket.OPEN) send(entry, { t: 'close' })
-    else stranded = entry.id
-  }
-  dispose(tabKey(sessionId, tabId))
-  // The choice is gone, so every body on this tab draws the chooser again.
-  for (const listener of targetListeners) listener()
-  return stranded
 }
 
 /**

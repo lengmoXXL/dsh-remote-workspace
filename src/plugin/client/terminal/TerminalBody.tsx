@@ -6,7 +6,7 @@
  * mounts and unmounts this component goes through every time the strip changes
  * tab. What is left here is the frame — the measured screen and the status line
  * — plus the two things only a live body can do: measure, and offer a restart
- * once the shell is gone, or an explicit end through the socket it holds.
+ * once the shell is gone. Ending a shell belongs where the shells are listed.
  *
  * @module dsh-remote-workspace/plugin/client/terminal/TerminalBody
  */
@@ -14,7 +14,6 @@
 import { useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import {
   Button,
-  IconCloseOutline16,
   IconEllipsisOutline16,
   IconRefreshOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -23,7 +22,6 @@ import type { TerminalPanelFace } from './index.ts'
 import type { TerminalKey, TerminalNamespace } from './locales.ts'
 import {
   chooseTerminal,
-  endTerminal,
   mountTerminal,
   restartTerminal,
   subscribeTerminalTargets,
@@ -90,36 +88,15 @@ export function TerminalBody(
     )
   }
 
+  // A shell that exited or never opened has nothing left to end and offers a
+  // restart instead.
   const gone = state.kind === 'ended' || state.kind === 'failed' || state.kind === 'closed'
-  // A shell still on the host can be ended; one that exited or never opened
-  // has nothing left to end and offers a restart instead.
-  const endable = state.kind === 'opening' || state.kind === 'live' || state.kind === 'closed'
-  const end = (): void => {
-    const stranded = endTerminal(sessionId, tab.id)
-    // A socket that had already dropped could not carry the frame, and the
-    // shell is still addressable, so the chooser's own route ends it.
-    if (stranded !== undefined) void close(stranded).catch(() => undefined)
-  }
   return (
     <div className={css.pane} data-terminal-session={sessionId}>
       <div className={css.bar}>
         <span className={css.path} title={state.kind === 'live' ? state.cwd : undefined}>
           {statusText(state, t)}
         </span>
-        {endable
-          ? (
-            <Button
-              className={css.action}
-              size="sm"
-              variant="ghost"
-              icon={<IconCloseOutline16 />}
-              data-terminal-end
-              aria-label={t('action.end')}
-              title={t('action.end')}
-              onClick={end}
-            />
-          )
-          : null}
         {state.kind === 'live' && state.fixedSize
           ? <span className={css.note}>{t('note.fixedSize')}</span>
           : null}

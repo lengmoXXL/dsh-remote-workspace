@@ -10,11 +10,9 @@
  *   output is not base64-encoded and re-decoded once per chunk.
  *
  * A socket's life is one *view* of a terminal, not the terminal itself. A
- * socket that closes without a `close` frame detaches: the host keeps the PTY
- * and its retained output so a reload, a closed tab, or a dropped connection
- * can `attach` back to the same shell, which lives for as long as its process
- * does. The `close` frame is what an explicit end sends — the panel's **End
- * terminal**, or the chooser's close — and it ends the shell at once.
+ * socket that closes detaches: the host keeps the PTY and its retained output
+ * so a reload, a closed tab, or a dropped connection can `attach` back to the
+ * same shell, which lives for as long as its process does.
  *
  * @module dsh-remote-workspace/terminal/shared/wire
  */
@@ -53,11 +51,6 @@ export interface AttachFrame {
   readonly rows: number
 }
 
-/** End the terminal now; what an explicit end sends. */
-export interface CloseFrame {
-  readonly t: 'close'
-}
-
 /** Deliver keystrokes. */
 export interface InputFrame {
   readonly t: 'input'
@@ -73,7 +66,7 @@ export interface ResizeFrame {
 }
 
 /** Every frame the browser sends. */
-export type ClientFrame = OpenFrame | AttachFrame | CloseFrame | InputFrame | ResizeFrame
+export type ClientFrame = OpenFrame | AttachFrame | InputFrame | ResizeFrame
 
 /** The terminal is live; the browser may now write to it. */
 export interface ReadyFrame {

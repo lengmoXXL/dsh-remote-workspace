@@ -319,8 +319,8 @@ test('an attach frame reattaches to a detached terminal and replays its output',
   terminal.emit('history\n')
   await new Promise(resolve => setImmediate(resolve))
 
-  // What a page reload looks like from the host: the socket closes with no
-  // close frame, and a new socket comes back with the id it remembers.
+  // What a page reload looks like from the host: the socket closes, and a new
+  // socket comes back with the id it remembers.
   first.close()
   await new Promise(resolve => setImmediate(resolve))
   const second = fakeSocket()
@@ -377,16 +377,6 @@ test('an attach frame cannot reach a terminal another Session owns', async () =>
   assert.equal(terminal.terminations(), 0, 'the refused attach did not touch the shell')
   assert.deepEqual(registry.listFor('session-2'), [])
   assert.equal(registry.requireOwned('session-1', 't1').id, 't1')
-})
-
-test('a close frame ends the terminal at once, while a dropped socket only detaches it', async () => {
-  const { terminal, browser, registry } = await opened()
-  browser.send({ t: 'close' })
-  await new Promise(resolve => setImmediate(resolve))
-
-  assert.equal(terminal.terminations(), 1)
-  assert.deepEqual(registry.listFor('session-1'), [])
-  assert.equal(browser.closed()?.code, 1000)
 })
 
 test('a detached terminal is released when its configured valve expires', async () => {

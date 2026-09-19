@@ -65,7 +65,7 @@ button. Register a repository, then use a row's menu to open, close, or remove w
 offers a new one. **Manage terminals** in the panel's status bar opens a second terminal tab beside the one in view, where
 the chooser offers a fresh shell or one that is already running; a shell another tab already shows is marked **Open in
 another tab**, and picking it brings that tab forward. Closing a tab leaves that shell running — it shows up in the
-chooser as detached — and **End terminal** in the panel, or a row's close control in the chooser, is what ends it.
+chooser as detached — and a row's close control in the chooser, which the panel's **Manage terminals** control opens, is what ends it.
 Hiding the tab, switching Session, or collapsing the sidebar also leaves a shell running.
 
 **Terminal appearance.** Font, size, line height, scrollback, and cursor blink live in the shell's own settings:

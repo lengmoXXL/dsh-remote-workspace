@@ -8,13 +8,12 @@
  * shell; this module never allocates or releases one directly.
  *
  * A tab owns its shell, but the socket is only a view of it. A socket that
- * closes without a `close` frame detaches: the registry keeps the PTY and its
- * retained output, so a reload, a closed tab, or a dropped connection can
- * `attach` back and see the same shell for as long as it lives. The `close`
- * frame is what an explicit end sends — the panel's End terminal, or the
- * chooser's close — and it ends the terminal at once. A shell whose process
- * exits still closes its socket and is released, and a Session ending releases
- * its terminals through the registry's own hook.
+ * closes detaches: the registry keeps the PTY and its retained output, so a
+ * reload, a closed tab, or a dropped connection can `attach` back and see the
+ * same shell for as long as it lives. Ending one is the chooser's own route,
+ * which reaches the registry without holding a socket, and a shell whose
+ * process exits still closes its socket and is released. A Session ending
+ * releases its terminals through the registry's own hook.
  *
  * Output is paced one chunk at a time through the sink the registry calls: a
  * command that floods the terminal pauses the PTY's output stream until the
@@ -112,23 +111,13 @@ export function attachTerminal(ctx: Context, registry: TerminalRegistry, socket:
     },
   }
 
-  /** This socket went away without a `close` frame: keep the shell it was viewing. */
+  /** This socket went away: keep the shell it was viewing. */
   const stop = (): void => {
     if (closed) return
     closed = true
     const current = entryId
     entryId = undefined
     if (current !== undefined) registry.detach(current, sink)
-  }
-
-  /** An explicit end: end the shell now instead of leaving it detached. */
-  const endNow = (): void => {
-    if (closed) return
-    closed = true
-    const current = entryId
-    entryId = undefined
-    if (current !== undefined) void registry.kill(current)
-    socket.close(1000, 'closed')
   }
 
   /** Register the shell for one Session's workspace and start streaming it. */
@@ -225,9 +214,6 @@ export function attachTerminal(ctx: Context, registry: TerminalRegistry, socket:
         return
       case 'attach':
         reattach(frame)
-        return
-      case 'close':
-        endNow()
         return
       case 'input': {
         const current = entryId
