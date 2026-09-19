@@ -30,6 +30,12 @@
 .row + .row { border-top: 1px solid var(--dsw-alias-border-l1); }
 .label { font-size: 13px; }
 .step { display: flex; align-items: center; gap: 6px; }
+.number { width: 120px; }
+.number input {
+  text-align: right;
+  font-family: var(--ds-font-family-code);
+  font-size: 12.5px;
+}
 .value {
   min-width: 56px;
   text-align: center;

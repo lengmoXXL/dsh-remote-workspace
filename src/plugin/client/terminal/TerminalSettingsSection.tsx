@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react'
-import { Button, IconChevronDownOutline14, Menu, Switch } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconChevronDownOutline14, Input, Menu, Switch } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { TerminalNamespace } from './locales.ts'
 import {
@@ -22,21 +22,20 @@ import {
 } from './settings.ts'
 import css from './TerminalSettingsSection.module.css'
 
-/** One numeric preference, as the section draws and steps it. */
+/** One preference the section steps, as it draws the row. */
 interface StepRow {
   /** Which preference the row steps. */
-  readonly key: 'fontSize' | 'lineHeight' | 'scrollback'
+  readonly key: 'fontSize' | 'lineHeight'
   /** The row's label. */
-  readonly label: 'settings.fontSize' | 'settings.lineHeight' | 'settings.scrollback'
+  readonly label: 'settings.fontSize' | 'settings.lineHeight'
   /** How the value reads. */
   readonly show: (value: number) => string
 }
 
-/** The numeric rows, in the order they are drawn. */
+/** The stepped rows, in the order they are drawn. */
 const STEPS: readonly StepRow[] = [
   { key: 'fontSize', label: 'settings.fontSize', show: value => `${value} px` },
   { key: 'lineHeight', label: 'settings.lineHeight', show: value => value.toFixed(1) },
-  { key: 'scrollback', label: 'settings.scrollback', show: String },
 ]
 
 /** Draw the terminal's display preferences. */
@@ -44,6 +43,9 @@ export function TerminalSettingsSection({ t }: PropsLocale<TerminalNamespace>): 
   const settings = useSyncExternalStore(subscribeTerminalDisplaySettings, terminalDisplaySettings)
   const [fontOpen, setFontOpen] = useState(false)
   const [fonts, setFonts] = useState<readonly string[] | undefined>(undefined)
+  // The typed rows are held as text while they are edited: a person typing
+  // "50000" passes through four numbers that are out of bounds.
+  const [scrollback, setScrollback] = useState<string | undefined>(undefined)
 
   /** Read this machine's fonts; the ask is answered while the page is open. */
   const readFonts = (): void => {
@@ -62,6 +64,15 @@ export function TerminalSettingsSection({ t }: PropsLocale<TerminalNamespace>): 
         ? { fontSize: held }
         : key === 'lineHeight' ? { lineHeight: held } : { scrollback: held },
     )
+  }
+
+  /** Keep one typed scrollback, held inside the bounds its row documents. */
+  const commitScrollback = (): void => {
+    const typed = (scrollback ?? '').trim()
+    setScrollback(undefined)
+    if (typed === '' || !Number.isFinite(Number(typed))) return
+    const { min, max } = TERMINAL_STEPS.scrollback
+    writeTerminalDisplaySettings({ scrollback: Math.min(max, Math.max(min, Math.round(Number(typed)))) })
   }
 
   return (
@@ -121,6 +132,20 @@ export function TerminalSettingsSection({ t }: PropsLocale<TerminalNamespace>): 
             </span>
           </div>
         ))}
+        <div className={css.row}>
+          <span className={css.label}>{t('settings.scrollback')}</span>
+          <Input
+            className={css.number!}
+            inputMode="numeric"
+            aria-label={t('settings.scrollback')}
+            value={scrollback ?? String(settings.scrollback)}
+            onChange={(event) => { setScrollback(event.target.value) }}
+            onBlur={commitScrollback}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') event.currentTarget.blur()
+            }}
+          />
+        </div>
         <div className={css.row}>
           <span className={css.label}>{t('settings.cursorBlink')}</span>
           <Switch

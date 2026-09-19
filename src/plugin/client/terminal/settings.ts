@@ -112,7 +112,7 @@ const DEFAULTS = {
 export const TERMINAL_STEPS = {
   fontSize: { min: 11, max: 16, step: 1 },
   lineHeight: { min: 1, max: 1.6, step: 0.1 },
-  scrollback: { min: 1_000, max: 100_000, step: 1_000 },
+  scrollback: { min: 1_000, max: 100_000 },
 } as const
 
 /** Where this page keeps the terminal's display preferences. */
