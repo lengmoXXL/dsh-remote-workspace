@@ -722,7 +722,7 @@ fn normalize_line_endings(content: &str) -> String {
     content.replace("\r\n", "\n")
 }
 
-/// Whether the dominant line-ending style in the first 4 KiB is CRLF.
+/// Whether the dominant line-ending style in the first 4096 characters is CRLF.
 fn detect_crlf(raw: &str) -> bool {
     let sample: String = raw.chars().take(4096).collect();
     let crlf = sample.matches("\r\n").count();
