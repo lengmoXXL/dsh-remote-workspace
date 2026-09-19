@@ -81,16 +81,11 @@ impl GitBackend {
         let target = absolute_path("add a worktree to", worktree_path, self.root.as_deref())?;
         require_repository(&repo).await?;
         let target_text = target.to_string_lossy().into_owned();
-        let outcome = match base_ref {
-            Some(reference) => {
-                run(
-                    &repo,
-                    &["worktree", "add", "-b", branch, &target_text, reference],
-                )
-                .await
-            }
-            None => run(&repo, &["worktree", "add", "-b", branch, &target_text]).await,
-        };
+        let mut args: Vec<&str> = vec!["worktree", "add", "-b", branch, &target_text];
+        if let Some(reference) = base_ref {
+            args.push(reference);
+        }
+        let outcome = run(&repo, &args).await;
         if !outcome.ok {
             return Err(classify_add(&repo, &target, branch, &outcome));
         }
@@ -323,7 +318,7 @@ async fn run<S: AsRef<OsStr>>(repo: &Path, args: &[S]) -> GitOutcome {
     }
 }
 
-/// Read one captured stream, stopping one byte past the capture cap.
+/// Read one captured stream, stopping at the capture cap.
 async fn read_bounded<R: tokio::io::AsyncRead + Unpin>(pipe: Option<R>) -> Vec<u8> {
     let Some(pipe) = pipe else { return Vec::new() };
     let mut buffer = Vec::new();
