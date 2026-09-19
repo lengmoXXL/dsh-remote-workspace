@@ -146,6 +146,20 @@ export type WireGitErrorCode =
   | 'GIT_DIRTY'
   | 'GIT_COMMAND_FAILED'
 
+/**
+ * Stable subprocess failure codes. `SP_UNSUPPORTED_STDIO` is the honest answer
+ * for a disposition this protocol revision cannot carry, so a caller learns
+ * what is missing instead of watching a stream that never produces bytes.
+ */
+export type WireSubprocessErrorCode =
+  | 'SP_NOT_FOUND'
+  | 'SP_NOT_EXECUTABLE'
+  | 'SP_SPAWN_FAILED'
+  | 'SP_UNSUPPORTED_STDIO'
+  | 'SP_NO_SUCH_PROCESS'
+  | 'SP_NO_SUCH_TERMINAL'
+  | 'SP_TERMINAL_FAILED'
+
 /** Every code a daemon failure may carry. */
 export type WireFailureCode = WireFsErrorCode | WireGitErrorCode | WireSubprocessErrorCode
 
@@ -164,20 +178,6 @@ export interface WireErrorData {
 export function isFsErrorCode(code: WireFailureCode): code is WireFsErrorCode {
   return code.startsWith('FS_')
 }
-
-/**
- * Stable subprocess failure codes. `SP_UNSUPPORTED_STDIO` is the honest answer
- * for a disposition this protocol revision cannot carry, so a caller learns
- * what is missing instead of watching a stream that never produces bytes.
- */
-export type WireSubprocessErrorCode =
-  | 'SP_NOT_FOUND'
-  | 'SP_NOT_EXECUTABLE'
-  | 'SP_SPAWN_FAILED'
-  | 'SP_UNSUPPORTED_STDIO'
-  | 'SP_NO_SUCH_PROCESS'
-  | 'SP_NO_SUCH_TERMINAL'
-  | 'SP_TERMINAL_FAILED'
 
 /** Signals the terminal primitive may deliver to a foreground group. */
 export type WireTerminalSignal = 'SIGINT' | 'SIGTERM' | 'SIGKILL' | 'SIGTSTP' | 'SIGHUP'
