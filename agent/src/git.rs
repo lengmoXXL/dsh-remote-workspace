@@ -503,7 +503,7 @@ fn says_any(outcome: &GitOutcome, needles: &[&str]) -> bool {
     needles.iter().any(|needle| says(outcome, needle))
 }
 
-/// Whether `haystack` contains `needle`, ignoring ASCII case.
+/// Whether `haystack` contains `needle`, ignoring case.
 fn contains_ci(haystack: &str, needle: &str) -> bool {
     haystack.to_lowercase().contains(&needle.to_lowercase())
 }
