@@ -413,14 +413,8 @@ fn spawn_on_pty(
     }
     let (argv_owned, argv) = argv_pointers(program, args).map_err(|e| failed(master, e))?;
     let (env_owned, envp) = env_pointers(spec).map_err(|e| failed(master, e))?;
-    let program_c = cstring(program).map_err(|e| failed(master, e))?;
-    let cwd_c = CString::new(cwd.as_os_str().as_bytes()).map_err(|_| {
-        let error = Failure::new(
-            "SP_TERMINAL_FAILED",
-            "cannot allocate a terminal: the working directory contains NUL",
-        );
-        failed(master, error)
-    })?;
+    let cwd_c = cstring(cwd.as_os_str().as_bytes(), "the working directory")
+        .map_err(|e| failed(master, e))?;
 
     let winsize = libc::winsize {
         ws_row: spec.rows,
@@ -484,7 +478,7 @@ fn spawn_on_pty(
             if libc::chdir(cwd_c.as_ptr()) != 0 {
                 child_fail(report[1]);
             }
-            libc::execve(program_c.as_ptr(), argv.as_ptr(), envp.as_ptr());
+            libc::execve(argv_owned[0].as_ptr(), argv.as_ptr(), envp.as_ptr());
             child_fail(report[1]);
         }
     }
@@ -536,12 +530,12 @@ unsafe fn child_fail(report: c_int) -> ! {
     libc::_exit(127);
 }
 
-/// Wrap one spawn argument as a C string.
-fn cstring(value: &str) -> Result<CString> {
-    CString::new(value.as_bytes()).map_err(|_| {
+/// Wrap bytes as a C string, naming `what` when a NUL makes that impossible.
+fn cstring(value: &[u8], what: &str) -> Result<CString> {
+    CString::new(value).map_err(|_| {
         Failure::new(
             "SP_TERMINAL_FAILED",
-            "cannot allocate a terminal: a value contains a NUL byte",
+            format!("cannot allocate a terminal: {what} contains a NUL byte"),
         )
     })
 }
@@ -550,9 +544,9 @@ fn cstring(value: &str) -> Result<CString> {
 /// @returns the owned strings and their pointers.
 fn argv_pointers(program: &str, args: &[String]) -> Result<(Vec<CString>, Vec<*const c_char>)> {
     let mut owned = Vec::with_capacity(args.len() + 1);
-    owned.push(cstring(program)?);
+    owned.push(cstring(program.as_bytes(), "the program name")?);
     for argument in args {
-        owned.push(cstring(argument)?);
+        owned.push(cstring(argument.as_bytes(), "an argument")?);
     }
     Ok(nul_terminated(owned))
 }
@@ -582,7 +576,10 @@ fn env_pointers(spec: &TerminalSpawnSpec) -> Result<(Vec<CString>, Vec<*const c_
 
     let mut owned = Vec::with_capacity(entries.len());
     for (key, value) in entries {
-        owned.push(cstring(&format!("{key}={value}"))?);
+        owned.push(cstring(
+            format!("{key}={value}").as_bytes(),
+            "an environment entry",
+        )?);
     }
     Ok(nul_terminated(owned))
 }
