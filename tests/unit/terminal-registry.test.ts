@@ -47,14 +47,14 @@ function fakeTerminal(): FakeTerminal {
   const writes: string[] = []
   const resizes: number[][] = []
   let terminations = 0
-  let settle: (outcome: TtyOutcome) => void = () => {}
-  const done = new Promise<TtyOutcome>((resolve) => { settle = resolve })
+  let resolveOutcome: (outcome: TtyOutcome) => void = () => {}
+  const done = new Promise<TtyOutcome>((resolve) => { resolveOutcome = resolve })
   return {
     writes,
     resizes,
     terminations: () => terminations,
     emit: (chunk) => { output.write(typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : chunk) },
-    exit: outcome => settle(outcome),
+    exit: outcome => resolveOutcome(outcome),
     handle: {
       pid: 4242,
       output,

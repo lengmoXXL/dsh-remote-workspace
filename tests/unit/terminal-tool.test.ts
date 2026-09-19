@@ -38,12 +38,12 @@ interface FakeTerminal {
 function fakeTerminal(): FakeTerminal {
   const output = new PassThrough()
   const writes: string[] = []
-  let settle: (outcome: TtyOutcome) => void = () => {}
-  const done = new Promise<TtyOutcome>((resolve) => { settle = resolve })
+  let resolveOutcome: (outcome: TtyOutcome) => void = () => {}
+  const done = new Promise<TtyOutcome>((resolve) => { resolveOutcome = resolve })
   return {
     writes,
     emit: (chunk) => { output.write(Buffer.from(chunk, 'utf8')) },
-    exit: () => settle({ exitCode: 0, signal: null }),
+    exit: () => resolveOutcome({ exitCode: 0, signal: null }),
     handle: {
       pid: 4242,
       output,
