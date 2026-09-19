@@ -128,6 +128,8 @@ export async function createRemoteTty(
   })
 
   const output = new PassThrough()
+  // A poll reads a raw byte window, so it can end in the middle of a character;
+  // the decoder holds the partial sequence until the next poll completes it.
   const decoder = new StringDecoder('utf8')
   let offset = 0
   let finished = false
@@ -177,6 +179,9 @@ export async function createRemoteTty(
   timer.unref()
   void tick()
 
+  /** The teardown in flight, so a second `terminate` joins the first. */
+  let stopping: Promise<void> | undefined
+
   const handle: TtyHandle = {
     pid: started.pid,
     output,
@@ -188,17 +193,20 @@ export async function createRemoteTty(
       await wire.resize(started.termId, cols, rows)
     },
     async terminate(): Promise<void> {
-      if (finished) return
-      await wire.terminate(started.termId)
-      // One last pull, so output produced during teardown is not lost.
-      await pull().catch(() => undefined)
-      // A terminal the daemon no longer knows reads as "no outcome": the exit
-      // facts are absent, which is exactly what a released terminal has.
-      const outcome = await wire.outcome(started.termId).catch(() => null)
-      finish({
-        exitCode: outcome?.exitCode ?? null,
-        signal: (outcome?.signal ?? null) as NodeJS.Signals | null,
-      })
+      stopping ??= (async () => {
+        if (finished) return
+        await wire.terminate(started.termId)
+        // One last pull, so output produced during teardown is not lost.
+        await pull().catch(() => undefined)
+        // A terminal the daemon no longer knows reads as "no outcome": the exit
+        // facts are absent, which is exactly what a released terminal has.
+        const outcome = await wire.outcome(started.termId).catch(() => null)
+        finish({
+          exitCode: outcome?.exitCode ?? null,
+          signal: (outcome?.signal ?? null) as NodeJS.Signals | null,
+        })
+      })()
+      await stopping
     },
   }
   return verbs === undefined ? handle : { ...handle, ...verbs(started.termId) }
