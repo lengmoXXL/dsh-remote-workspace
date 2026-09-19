@@ -147,25 +147,22 @@ async fn resolves_an_absolute_path_and_searches_a_given_path() {
         .to_string_lossy()
         .into_owned();
 
-    let absolute = sp.resolve_executable("/bin/sh", &[]).await.unwrap();
+    let absolute = sp.resolve_executable("/bin/sh", &[]).unwrap();
     assert_eq!(absolute["path"], canonical_sh);
 
     let searched = sp
         .resolve_executable("sh", &[("PATH".to_string(), "/bin:/usr/bin".to_string())])
-        .await
         .unwrap();
     assert_eq!(searched["path"], canonical_sh);
 
     assert_eq!(
         sp.resolve_executable("sub/dir", &[])
-            .await
             .unwrap_err()
             .code,
         "SP_NOT_EXECUTABLE"
     );
     assert_eq!(
         sp.resolve_executable("drw-no-such-program", &[])
-            .await
             .unwrap_err()
             .code,
         "SP_NOT_FOUND"

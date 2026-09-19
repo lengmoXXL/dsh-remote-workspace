@@ -92,7 +92,7 @@ impl SubprocessBackend {
     }
 
     /// Resolve a program name to an absolute executable path.
-    pub async fn resolve_executable(
+    pub fn resolve_executable(
         &self,
         command: &str,
         env: &[(String, String)],

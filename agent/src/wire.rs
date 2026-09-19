@@ -163,13 +163,10 @@ pub async fn dispatch(method: &str, params: &Value, backends: &Backends) -> Resu
         }
         "sp.resolveExecutable" => {
             let source = as_record(params, method)?;
-            backends
-                .sp
-                .resolve_executable(
-                    require_string(source, "command", method)?,
-                    &read_environment(source.get("env"), method)?,
-                )
-                .await
+            backends.sp.resolve_executable(
+                require_string(source, "command", method)?,
+                &read_environment(source.get("env"), method)?,
+            )
         }
         "sp.spawn" => backends.sp.spawn(read_spawn_spec(params, method)?).await,
         "sp.readOutput" => {
