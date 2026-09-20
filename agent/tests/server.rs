@@ -221,7 +221,7 @@ async fn runs_a_process_over_the_socket_while_the_connection_keeps_serving() {
     let waited = client
         .request("sp.waitForExit", json!({ "procId": proc_id }))
         .await;
-    assert_eq!(waited["result"]["empty"], true);
+    assert!(waited["result"].as_object().expect("an object").is_empty());
 
     let read = client
         .request(

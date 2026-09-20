@@ -57,9 +57,8 @@ async fn collects_both_streams_and_reports_the_exit_facts() {
         .unwrap(),
     );
 
-    assert!(sp.wait_for_exit(&id).await.unwrap()["empty"]
-        .as_bool()
-        .unwrap());
+    let waited = sp.wait_for_exit(&id).await.unwrap();
+    assert!(waited.as_object().expect("an object").is_empty());
     let outcome = sp.outcome(&id).unwrap();
     assert_eq!(outcome["exitCode"], 3);
     assert!(outcome["signal"].is_null());

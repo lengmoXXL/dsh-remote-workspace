@@ -230,7 +230,7 @@ test('sp.spawn collects both streams and reports the exit facts', async () => {
   })
   assert.deepEqual(fields(spawned), ['procId'])
 
-  assert.deepEqual(await call('sp.waitForExit', { procId: spawned.procId }), { empty: true })
+  assert.deepEqual(await call('sp.waitForExit', { procId: spawned.procId }), {})
 
   const stdout = await call('sp.readOutput', { procId: spawned.procId, stream: 'stdout', fromByte: 0 })
   assert.deepEqual(fields(stdout), ['data', 'lossy', 'nextOffset'])

@@ -62,7 +62,7 @@ function fakeDaemon(options: {
           if (options.spawnError !== undefined) return Promise.reject(options.spawnError) as never
           return Promise.resolve({ procId: 'p1' }) as never
         case 'sp.waitForExit':
-          return Promise.resolve({ empty: true }) as never
+          return Promise.resolve({}) as never
         case 'sp.outcome':
           return Promise.resolve({ exitCode: options.exitCode ?? 0, signal: null }) as never
         case 'sp.readOutput': {

@@ -286,7 +286,7 @@ impl SubprocessBackend {
     /// Wait until the whole managed range is gone, not merely the direct child.
     pub async fn wait_for_exit(&self, proc_id: &str) -> Result<Value> {
         self.require(proc_id)?.wait_for_exit().await;
-        Ok(json!({ "empty": true }))
+        Ok(json!({}))
     }
 
     /// Read the exit facts of a closed child.

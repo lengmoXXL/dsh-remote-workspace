@@ -419,7 +419,7 @@ export interface WireMethods {
   'sp.writeStdin': { params: { procId: ProcId; data: string }; result: Record<string, never> }
   'sp.closeStdin': { params: { procId: ProcId }; result: Record<string, never> }
   'sp.terminate': { params: { procId: ProcId }; result: Record<string, never> }
-  'sp.waitForExit': { params: { procId: ProcId }; result: { empty: boolean } }
+  'sp.waitForExit': { params: { procId: ProcId }; result: Record<string, never> }
   'sp.outcome': { params: { procId: ProcId }; result: WireOutcome | null }
   'term.spawn': { params: WireTerminalSpawnSpec; result: { termId: TermId; pid: number } }
   'term.read': {
