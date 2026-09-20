@@ -98,7 +98,7 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.client.json",
     "build": "tsdown",
-    "prepare": "npm run build",
+    "prepublishOnly": "npm run build",
     "pretest": "npm run build",
     "test": "node --test --experimental-strip-types tests/unit/*.test.ts tests/e2e/*.test.ts",
     "test:browser": "npm run build && node --test --experimental-strip-types tests/browser/workflow.test.ts",

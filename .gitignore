@@ -1,9 +1,9 @@
 # Dependencies
 node_modules/
 
-# Build outputs. The profile loads these from this directory, so they stay on
-# disk; they are rebuilt from src/ and are not part of the source history.
-lib/
+# Build outputs. The store installs this plugin from a pinned commit, so the
+# built JavaScript has to be in the source history; source maps do not.
+lib/*.map
 
 # Cargo build outputs. The plugin installs the published release binary on the
 # remote machine, so nothing built here belongs in the source history.
