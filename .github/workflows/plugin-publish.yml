@@ -1,4 +1,4 @@
-name: Plugin release
+name: Plugin publish
 
 on:
   push:
@@ -7,11 +7,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  # The tag names the asset the install line downloads, so a tag that disagrees
-  # with package.json must never publish one.
+  # The tag names the version being published, so a tag that disagrees with
+  # package.json must never publish one.
   guard:
     runs-on: ubuntu-latest
     steps:
@@ -28,47 +28,34 @@ jobs:
             exit 1
           fi
 
-  # The tarball is what a deployment installs: `npm ci` runs the `prepare`
-  # script, which is what puts the built `lib/` into it.
-  pack:
+  publish:
     needs: guard
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      # registry-url is what lets NODE_AUTH_TOKEN below reach the registry.
       - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
+          registry-url: https://registry.npmjs.org
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           # The crate is the whole of `agent/`; there is no root manifest.
           workspaces: agent
+      # npm ci runs the prepare script, which is what puts the built lib/ into
+      # the tarball npm publishes.
       - run: npm ci
       - run: npm run typecheck
-      # The e2e suite drives the real agent, so the release is cut only from a
-      # tree whose full suite passes against it.
+      # The e2e suite drives the real agent, so a version is published only from
+      # a tree whose full suite passes against it.
       - run: cargo build --release --manifest-path agent/Cargo.toml
       - name: Test
         run: |
           export DSH_REMOTE_AGENT_BIN="$PWD/agent/target/release/dsh-remote-agent"
           npm test
-      - name: Pack the plugin
-        run: |
-          mkdir -p dist
-          npm pack --pack-destination dist
-          ls -l dist
-      - name: Publish release
+      - name: Publish
+        run: npm publish
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # Idempotent: a tag can produce more than one run, and the loser of
-          # that race must upload to the release the winner created instead of
-          # failing the workflow.
-          gh release create "$GITHUB_REF_NAME" \
-            dist/dsh-remote-workspace-*.tgz \
-            --repo lengmoXXL/dsh-remote-workspace \
-            --verify-tag --generate-notes \
-          || gh release upload "$GITHUB_REF_NAME" \
-            dist/dsh-remote-workspace-*.tgz \
-            --repo lengmoXXL/dsh-remote-workspace --clobber
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

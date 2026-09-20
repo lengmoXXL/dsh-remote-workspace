@@ -1,7 +1,6 @@
 {
   "name": "dsh-remote-workspace",
   "version": "0.1.11",
-  "private": true,
   "description": "DeepSeek Harness plugin for working on other machines: manage machines over SSH, work in their repositories and worktrees, and open a terminal there.",
   "type": "module",
   "main": "lib/index.js",
@@ -18,6 +17,10 @@
     "lib",
     "cordis.patch.yml"
   ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",

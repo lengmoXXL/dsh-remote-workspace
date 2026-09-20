@@ -20,7 +20,7 @@ English | [中文](README.zh.md)
 ## Install
 
 ```sh
-dsh plugin --profile web add https://github.com/lengmoXXL/dsh-remote-workspace/releases/download/plugin-v0.1.11/dsh-remote-workspace-0.1.11.tgz
+dsh plugin --profile web add dsh-remote-workspace
 ```
 
 The plugin takes over services the base profile provides, and the host plane holds one implementation per service. Add
@@ -38,7 +38,7 @@ says so on stderr.
   disabled: true
 ```
 
-Then start the profile with `dsh --profile web`. The tarball contains the built `lib/`, so nothing is compiled on this
+Then start the profile with `dsh --profile web`. The package ships the built `lib/`, so nothing is compiled on this
 machine. To work on the plugin itself, clone the repository, run `npm install && npm run build`, and add the checkout
 path instead.
 

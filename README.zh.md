@@ -19,7 +19,7 @@
 ## 安装
 
 ```sh
-dsh plugin --profile web add https://github.com/lengmoXXL/dsh-remote-workspace/releases/download/plugin-v0.1.11/dsh-remote-workspace-0.1.11.tgz
+dsh plugin --profile web add dsh-remote-workspace
 ```
 
 插件要接管 base profile 提供的服务，而 host plane 每项服务只允许一个实现。把这四行加进
@@ -36,7 +36,7 @@ dsh plugin --profile web add https://github.com/lengmoXXL/dsh-remote-workspace/r
   disabled: true
 ```
 
-然后用 `dsh --profile web` 启动。tarball 里带着构建好的 `lib/`，本机不编译任何东西。改插件本身时，改为 clone
+然后用 `dsh --profile web` 启动。包里带着构建好的 `lib/`，本机不编译任何东西。改插件本身时，改为 clone
 仓库、`npm install && npm run build`，再添加检出目录。
 
 ## 功能
