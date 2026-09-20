@@ -160,7 +160,7 @@ async function compose(extraRows: readonly string[] = []): Promise<Composition> 
     '  name: test-tools',
     ...extraRows,
     '- id: dsh-remote-workspace',
-    '  name: dsh-remote-workspace',
+    '  name: "@lengmoxxl/dsh-remote-workspace"',
     '  config:',
     `    dataDir: ${JSON.stringify(dataDir)}`,
     '',
@@ -178,7 +178,7 @@ async function compose(extraRows: readonly string[] = []): Promise<Composition> 
     ['test-web-server', webServerProvider(routes)],
     ['test-sessions', sessionsProvider()],
     ['test-tools', toolsProvider(tools)],
-    ['dsh-remote-workspace', plugin],
+    ['@lengmoxxl/dsh-remote-workspace', plugin],
   ])
   ctx.loader.internal = {
     version: 'v2',

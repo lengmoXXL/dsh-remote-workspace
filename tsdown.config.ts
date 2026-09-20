@@ -32,8 +32,8 @@ import { basename, dirname, isAbsolute, resolve as resolvePath } from 'node:path
 import { defineConfig } from 'tsdown'
 import { transform } from 'lightningcss'
 
-/** The plugin id the loader keys this bundle by; it must match `dsh.client`. */
-const ID = 'dsh-remote-workspace'
+/** The id the client module system keys this bundle by: the package name. */
+const ID = '@lengmoxxl/dsh-remote-workspace'
 
 /**
  * Virtual-id wrapper keeping CSS away from tsdown's own css pipeline. The

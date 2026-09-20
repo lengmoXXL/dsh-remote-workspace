@@ -21,7 +21,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { cp, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { createServer, Socket } from 'node:net'
 import { homedir, tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { agentBinaryPath } from '../agent-binary.ts'
@@ -148,9 +148,14 @@ async function deploy(
   const localRepo = await createFixtureRepo(join(root, 'local-repo'))
 
   await cp(join(homedir(), '.dsh', 'profiles'), join(home, 'profiles'), { recursive: true })
-  const linked = join(home, 'profiles', PROFILE, 'node_modules', 'dsh-remote-workspace')
-  await rm(linked, { force: true })
-  await symlink(process.cwd(), linked, 'dir')
+  // The copy may name this checkout by its scoped package or the bare one,
+  // depending on when the operator installed it, so both spellings point here.
+  for (const name of ['@lengmoxxl/dsh-remote-workspace', 'dsh-remote-workspace']) {
+    const linked = join(home, 'profiles', PROFILE, 'node_modules', name)
+    await mkdir(dirname(linked), { recursive: true })
+    await rm(linked, { force: true })
+    await symlink(process.cwd(), linked, 'dir')
+  }
 
   const registryDir = join(home, 'remote-worktrees')
   await mkdir(registryDir, { recursive: true })

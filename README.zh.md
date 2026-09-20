@@ -19,7 +19,7 @@
 ## 安装
 
 ```sh
-dsh plugin --profile web add dsh-remote-workspace
+dsh plugin --profile web add @lengmoxxl/dsh-remote-workspace
 ```
 
 插件要接管 base profile 提供的服务，而 host plane 每项服务只允许一个实现。把这四行加进
