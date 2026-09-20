@@ -42,6 +42,21 @@ Then start the profile with `dsh --profile web`. The package ships the built `li
 machine. To work on the plugin itself, clone the repository, run `npm install && npm run build`, and add the checkout
 path instead.
 
+## Permissions and risks
+
+This plugin is high-privilege by design: it runs commands, opens terminals, and reads and writes files on every machine
+you register, as the SSH account it reaches. Anyone holding a machine's token and a way to its loopback port can act as
+that account.
+
+- The host half routes `ctx.fs`, `ctx.subprocess`, `ctx.shell`, and `ctx.tty`. The four stock providers are disabled
+  in `cordis.patch.yml` above, so the paths this plugin routes answer through it instead of them.
+- The agent binary is downloaded from this repository's GitHub Releases, checked against `SHA256SUMS`, uploaded to
+  `~/.dsh/remote-agent/` on the machine, and started there. It listens on `127.0.0.1` only, reached through `ssh -L`;
+  its token file and this host's node registry are both mode `600`.
+- `node-pty` is a native dependency with a prebuilt binding: Sidebar terminals on this host run through it.
+- Outbound network access is the GitHub Releases download and the `ssh` connections you configure. Nothing else leaves
+  the machine.
+
 ## What it does
 
 - Adds machines over SSH, and a built-in `Local` machine for this host. The agent is downloaded from this repository's

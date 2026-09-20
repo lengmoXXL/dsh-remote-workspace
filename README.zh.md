@@ -39,6 +39,18 @@ dsh plugin --profile web add @lengmoxxl/dsh-remote-workspace
 然后用 `dsh --profile web` 启动。包里带着构建好的 `lib/`，本机不编译任何东西。改插件本身时，改为 clone
 仓库、`npm install && npm run build`，再添加检出目录。
 
+## 权限与风险
+
+这个插件按设计就是高权限的：它会在你登记的每台机器上、以 SSH 账号的身份运行命令、开终端、读写文件。持有某台机器
+token 且能到达其回环端口的人，等同于能以该账号行事。
+
+- host 半边接管 `ctx.fs`、`ctx.subprocess`、`ctx.shell`、`ctx.tty`；上面 `cordis.patch.yml` 里禁用的四个官方
+  实现正是为此让位，被路由到的路径改由本插件应答。
+- agent 二进制从本仓库的 GitHub Releases 下载、用 `SHA256SUMS` 校验、上传到机器的 `~/.dsh/remote-agent/` 并启动。
+  它只监听 `127.0.0.1`、经 `ssh -L` 到达；其 token 文件与本机节点登记表的权限都是 `600`。
+- `node-pty` 是带预编译绑定的原生依赖：本机侧边栏的终端经由它运行。
+- 对外网络只有 GitHub Releases 下载与你配置的 `ssh` 连接，此外不向外发任何东西。
+
 ## 功能
 
 - 通过 SSH 添加机器，以及一个操作本机的内置 `Local` 机器。agent 从本仓库 Releases 下载、用 `SHA256SUMS` 校验、
