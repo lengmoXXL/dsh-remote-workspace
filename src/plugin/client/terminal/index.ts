@@ -35,6 +35,8 @@ import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: the settings scope service merge (ctx.settingsScope) this half
 // binds the display preferences through.
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
+// Type-only: declares the `plugins.bundle.config` slot the Plugins page fills.
+import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import {
   TERMINAL_DISPLAY_NAMESPACE,
   type TerminalDisplaySettings,
@@ -54,6 +56,12 @@ const TERMINAL_KIND = 'terminal'
 
 /** That type's implementation identity, and the key its body registers under. */
 const TERMINAL_ID = 'dsh-terminal'
+
+/**
+ * This bundle's package name, which keys the configuration page the Plugins
+ * page draws for it.
+ */
+const BUNDLE_NAME = '@lengmoxxl/dsh-remote-workspace'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -157,13 +165,11 @@ export function mountTerminal(ctx: Context): void {
       })),
       'dsh-terminal: display preferences scope',
     )
-    scoped.effect(() => scoped.slots.inject('settings.plugins.tab', () => scoped.slots.register({
-      name: 'settings.plugins.tab',
-      id: TERMINAL_DISPLAY_NAMESPACE,
-      order: 30,
-      label: () => t('settings.title'),
+    scoped.effect(() => scoped.slots.inject('plugins.bundle.config', () => scoped.slots.register({
+      name: 'plugins.bundle.config',
+      key: BUNDLE_NAME,
       locale: NS,
-    }, TerminalSettings)), 'dsh-terminal: display preferences tab')
+    }, TerminalSettings)), 'dsh-terminal: display preferences page')
   })
   // Bound, not called: every label is read through it at draw time, so a
   // language change needs no re-registration.

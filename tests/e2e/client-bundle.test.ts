@@ -218,12 +218,11 @@ test('apply registers the settings section and the terminal tab', async () => {
   const body = registrations.find(entry => entry.name === 'sidebar.right.pane.tab')
   assert.equal(body?.key, 'dsh-terminal')
   assert.equal(typeof body?.component, 'function')
-  // The display preferences are a tab in the Plugins settings section, keyed by
-  // the settings namespace the Host registers.
-  const tab = registrations.find(entry => entry.name === 'settings.plugins.tab')
-  assert.equal(tab?.id, 'dsh-remote-workspace')
-  assert.equal(tab?.order, 30)
-  assert.equal(typeof tab?.component, 'function')
+  // The display preferences are this bundle's configuration page, keyed by the
+  // package name the Plugins page lists the bundle under.
+  const page = registrations.find(entry => entry.name === 'plugins.bundle.config')
+  assert.equal(page?.key, '@lengmoxxl/dsh-remote-workspace')
+  assert.equal(typeof page?.component, 'function')
   assert.deepEqual(tabs.map(tab => [tab.id, tab.kind]), [['dsh-terminal', 'terminal']])
 })
 
@@ -350,7 +349,7 @@ test('the card renders its own copy from the terminal dictionary', async () => {
   const { exports } = await loadBundle()
   const { ctx, registrations } = stubContext()
   ;(exports['apply'] as (ctx: unknown) => void)(ctx)
-  const component = registrations.find(entry => entry.name === 'settings.plugins.tab')?.component as (props: Record<string, unknown>) => unknown
+  const component = registrations.find(entry => entry.name === 'plugins.bundle.config')?.component as (props: Record<string, unknown>) => unknown
 
   const { renderToStaticMarkup } = await import('react-dom/server')
   const markup = renderToStaticMarkup(

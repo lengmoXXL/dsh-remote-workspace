@@ -1,13 +1,12 @@
 /**
- * The terminal's display preferences, as the Plugins settings page draws them.
+ * The terminal's display preferences, as the Plugins page draws them.
  *
- * The card is keyed by the settings namespace the Host registers, which is what
- * makes it appear at all: the page dispatches one card per namespace it is
- * served, and this one edits the plugin's own. It holds the font, its size and
- * line height, whether the cursor blinks, and how many lines the browser keeps.
- * Every row writes through the same preferences the terminal
- * draws with, so a change reaches the shells already open and the ones opened
- * later alike.
+ * The page is keyed by this bundle's package name, which is what makes it
+ * appear at all: the Plugins page shows one bundle's configuration on that
+ * bundle's own page. It holds the font, its size and line height, whether the
+ * cursor blinks, and how many lines the browser keeps. Every row writes through
+ * the same preferences the terminal draws with, so a change reaches the shells
+ * already open and the ones opened later alike.
  *
  * @module dsh-remote-workspace/plugin/client/terminal/TerminalSettings
  */
@@ -21,8 +20,8 @@ import {
   Switch,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-// Type-only: declares the `settings.plugin.item` slot this card fills.
-import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
+// Type-only: declares the `plugins.bundle.config` slot this page fills.
+import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import { TERMINAL_DISPLAY_BOUNDS } from '../../../terminal/shared/display.ts'
 import { NS } from './locales.ts'
 import {
@@ -49,9 +48,9 @@ const STEPS: readonly StepRow[] = [
   { key: 'lineHeight', label: 'settings.lineHeight', show: value => value.toFixed(1) },
 ]
 
-/** Props the renderer binds for this card. */
+/** Props the renderer binds for this page. */
 export type TerminalSettingsProps =
-  PropsRuntime<'settings.plugins.tab'>
+  PropsRuntime<'plugins.bundle.config'>
   & PropsLocale<typeof NS>
 
 /**

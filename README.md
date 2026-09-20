@@ -84,7 +84,7 @@ chooser as detached — and a row's close control in the chooser, which the pane
 Hiding the tab, switching Session, or collapsing the sidebar also leaves a shell running.
 
 **Terminal appearance.** Font, size, line height, scrollback, and cursor blink live in the shell's own settings:
-**Settings → Plugins → Terminal appearance**. They are stored in the settings document, so every
+**Plugins → remote-workspace**. They are stored in the settings document, so every
 page of this deployment draws a terminal the same way.
 
 ## Config

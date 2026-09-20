@@ -688,20 +688,22 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     await shot('01-section')
 
     // The terminal's display preferences are this plugin's own settings, so the
-    // Plugins settings section draws them as the tab this plugin contributes. A
-    // row writes into the Host's settings document — which is what the next page
-    // load reads back — so the check follows the value there rather than
-    // trusting the label that moved on screen.
+    // sidebar's Plugins page draws them on this bundle's own page. A row writes
+    // into the Host's settings document — which is what the next page load reads
+    // back — so the check follows the value there rather than trusting the label
+    // that moved on screen.
     await clickByText(page, PLUGINS_NAV)
-    await waitForText(page, terminalZh['settings.title'], 'the terminal card')
-    await clickByText(page, cardLabel('settings.title', false))
-    await waitForText(page, terminalZh['settings.fontSize'], 'the card rows')
+    await waitForText(page, 'remote-workspace', 'the bundle card')
+    await clickByText(page, /^remote-workspace$/)
+    await waitForText(page, terminalZh['settings.title'], 'the terminal page')
+    await waitForText(page, terminalZh['settings.fontSize'], 'the page rows')
     await shot('01b-terminal-card')
     await clickByText(page, cardLabel('settings.increase'))
     await waitForText(page, '13 px', 'the font size to step')
     await waitForSettings(instance, /dsh-remote-workspace:\n\s+fontSize: 13/)
 
     // Back to this plugin's own section: the workflow below is managed there.
+    await clickByText(page, /设置|Settings/i)
     await clickByText(page, anyOf('title'))
     await waitFor(page, controlsFor('addMachine', 'refresh'), 'the section toolbar')
 
