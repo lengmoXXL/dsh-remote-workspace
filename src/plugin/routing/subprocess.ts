@@ -52,7 +52,7 @@ import { createRemoteTty } from '../../remote/tty.ts'
  */
 export type SubprocessRuntimeContract = Pick<
   SubprocessRuntime,
-  'resolveExecutable' | 'spawn' | 'spawnTerminal'
+  'resolveExecutable' | 'terminalEnvironment' | 'spawn' | 'spawnTerminal'
 >
 
 /**
@@ -408,6 +408,15 @@ export function createRoutingSubprocessRuntime(
     // a remote spawn resolves its own executable on the node instead.
     resolveExecutable(command, env, signal) {
       return deps.localProc.resolveExecutable(command, env, signal)
+    },
+
+    // Shell-selection facts carry no working directory either, so this answers
+    // for this host. A Session whose node disagrees about the login shell — a
+    // Mac host against a Linux node — must name that shell in the terminal
+    // controller's own `shell` profile, whose path is captured at spawn and
+    // resolved on the node.
+    terminalEnvironment(signal) {
+      return deps.localProc.terminalEnvironment(signal)
     },
 
     spawn(spec: SubprocessSpawnSpec): SubprocessHandle {
