@@ -95,11 +95,12 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.client.json",
     "build": "tsdown",
+    "build:agent": "cargo build --release --manifest-path agent/Cargo.toml",
+    "build:all": "npm run build && npm run build:agent",
     "prepare": "npm run build",
-    "pretest": "npm run build",
+    "pretest": "npm run build:all",
     "test": "node --test --experimental-strip-types tests/unit/*.test.ts tests/e2e/*.test.ts",
-    "test:browser": "npm run build && node --test --experimental-strip-types tests/browser/workflow.test.ts",
-    "build:agent": "cargo build --release --manifest-path agent/Cargo.toml"
+    "test:browser": "npm run build:all && node --test --experimental-strip-types tests/browser/workflow.test.ts"
   },
   "dependencies": {
     "@deepseek-ai/dsh-atomic-write": "^0.1.5-rc.2",
