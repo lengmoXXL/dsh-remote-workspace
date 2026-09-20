@@ -118,7 +118,10 @@ function cssInline() {
       })
       if (!modules) return styleInjectionModule(fileId, code.toString(), null)
       const classMap: Record<string, string> = {}
-      for (const [local, exported] of Object.entries(exports ?? {})) classMap[local] = exported.name
+      // Lightning CSS hands the map back in an unstable order, and lib/ is
+      // committed: sorting keeps a rebuild byte-identical to the last one.
+      const locals = Object.entries(exports ?? {}).sort(([left], [right]) => left.localeCompare(right))
+      for (const [local, exported] of locals) classMap[local] = exported.name
       return styleInjectionModule(fileId, code.toString(), classMap)
     },
   }
