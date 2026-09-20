@@ -15,7 +15,7 @@ English | [中文](README.zh.md)
 ## Requirements
 
 - Node 22.19+ or 24+, with `ssh` configured as usual.
-- DSH `0.1.6-alpha.2` or `0.1.5-rc.2`. Other releases are untested.
+- DSH `0.1.6-alpha.2`. Other releases are untested.
 
 ## Install
 
