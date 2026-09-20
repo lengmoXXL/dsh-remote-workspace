@@ -94,6 +94,7 @@ function terminalDefinition(t: Translate<TerminalKey>): SidebarRightTabDefinitio
     priority: 'builtin',
     title: () => t('type.label'),
     guide: [{
+      id: TERMINAL_KIND,
       order: 30,
       title: () => t('guide.title'),
       description: () => t('guide.description'),
@@ -156,11 +157,13 @@ export function mountTerminal(ctx: Context): void {
       })),
       'dsh-terminal: display preferences scope',
     )
-    scoped.effect(() => scoped.slots.inject('settings.plugin.item', () => scoped.slots.register({
-      name: 'settings.plugin.item',
-      key: TERMINAL_DISPLAY_NAMESPACE,
+    scoped.effect(() => scoped.slots.inject('settings.plugins.tab', () => scoped.slots.register({
+      name: 'settings.plugins.tab',
+      id: TERMINAL_DISPLAY_NAMESPACE,
+      order: 30,
+      label: () => t('settings.title'),
       locale: NS,
-    }, TerminalSettings)), 'dsh-terminal: display preferences card')
+    }, TerminalSettings)), 'dsh-terminal: display preferences tab')
   })
   // Bound, not called: every label is read through it at draw time, so a
   // language change needs no re-registration.

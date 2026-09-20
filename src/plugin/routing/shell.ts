@@ -81,7 +81,7 @@ export function createRoutingShellExecutor(deps: RoutingShellDeps): ShellExecuto
       return delegateFor(spec.workdir).run(spec)
     },
 
-    start(spec: ShellExecSpec): ShellProcess {
+    start(spec: ShellExecSpec): Promise<ShellProcess> {
       return delegateFor(spec.workdir).start(spec)
     },
   }

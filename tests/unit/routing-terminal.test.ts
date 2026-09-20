@@ -23,6 +23,7 @@ const spec = (cwd: string): SubprocessTerminalSpawnSpec => ({
   cwd,
   rows: 24,
   cols: 80,
+  terminalType: 'xterm-256color',
   graceMs: 1000,
 })
 

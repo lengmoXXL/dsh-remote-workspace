@@ -112,6 +112,7 @@ test('a terminal is allocated on the node with a real pid', async (t) => {
     cwd: anchorRoot,
     rows: 24,
     cols: 80,
+    terminalType: 'xterm-256color',
     graceMs: 1000,
   })
 
@@ -128,6 +129,7 @@ test('input written to the terminal reaches the shell and its reply comes back',
     cwd: anchorRoot,
     rows: 24,
     cols: 80,
+    terminalType: 'xterm-256color',
     graceMs: 1000,
   })
 
@@ -145,6 +147,7 @@ test('the terminal runs in the remote working directory', async (t) => {
     cwd: anchorRoot,
     rows: 24,
     cols: 80,
+    terminalType: 'xterm-256color',
     graceMs: 1000,
   })
 
@@ -163,6 +166,7 @@ test('a resize reaches the node and changes the pty window size', async (t) => {
     cwd: anchorRoot,
     rows: 24,
     cols: 80,
+    terminalType: 'xterm-256color',
     graceMs: 1000,
   })
 
@@ -183,6 +187,7 @@ test('foreground inspection answers a group or an honest nothing', async (t) => 
     cwd: anchorRoot,
     rows: 24,
     cols: 80,
+    terminalType: 'xterm-256color',
     graceMs: 1000,
   })
   await until(handle, 'sleep 5\n', () => false, 'sleep to start').catch(() => {})
@@ -203,6 +208,7 @@ test('terminate ends the session and settles the handle', async (t) => {
     cwd: anchorRoot,
     rows: 24,
     cols: 80,
+    terminalType: 'xterm-256color',
     graceMs: 500,
   })
   await handle.terminate()

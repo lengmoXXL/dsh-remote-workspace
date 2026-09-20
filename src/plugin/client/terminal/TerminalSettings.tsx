@@ -51,7 +51,7 @@ const STEPS: readonly StepRow[] = [
 
 /** Props the renderer binds for this card. */
 export type TerminalSettingsProps =
-  PropsRuntime<'settings.plugin.item'>
+  PropsRuntime<'settings.plugins.tab'>
   & PropsLocale<typeof NS>
 
 /**

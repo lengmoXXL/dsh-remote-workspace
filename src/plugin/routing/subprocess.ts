@@ -31,6 +31,7 @@ import type {
   SubprocessOutputReader,
   SubprocessRuntime,
   SubprocessSpawnSpec,
+  SubprocessTerminalActivity,
   SubprocessTerminalForeground,
   SubprocessTerminalHandle,
   SubprocessTerminalSignal,
@@ -340,6 +341,8 @@ function createRemoteHandle(
     stdin: stdinStream,
     stdout: stdoutPipe,
     stderr: stderrPipe,
+    // This provider carries no separate control channel.
+    control: undefined,
     collected,
     done,
     terminate() {
@@ -430,9 +433,20 @@ export function createRoutingSubprocessRuntime(
         graceMs: spec.graceMs,
         ...spec.env === undefined ? {} : { env: spec.env },
       }
+      // Activity survives between observations, so the revision advances only
+      // when a fresh look contradicts the last one.
+      let observed: SubprocessTerminalActivity = { state: 'unknown', revision: 0 }
       return await createRemoteTty(terminalWire(remote.channel), request, termId => ({
         async inspectForeground(): Promise<SubprocessTerminalForeground | undefined> {
           return await remote.channel.request('term.inspectForeground', { termId: asTermId(termId) }) ?? undefined
+        },
+        async inspectActivity(): Promise<SubprocessTerminalActivity> {
+          const foreground = await remote.channel.request('term.inspectForeground', { termId: asTermId(termId) }) ?? undefined
+          // A foreground group sleeping on the terminal is the prompt evidence
+          // this machine can see; no group at all is not an idle terminal.
+          const state = foreground === undefined ? 'unknown' : foreground.inputWaiting ? 'idle' : 'busy'
+          if (state !== observed.state) observed = { state, revision: observed.revision + 1 }
+          return observed
         },
         async signalForeground(signal: SubprocessTerminalSignal): Promise<number> {
           const result = await remote.channel.request('term.signalForeground', {

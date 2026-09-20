@@ -688,10 +688,10 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     await shot('01-section')
 
     // The terminal's display preferences are this plugin's own settings, so the
-    // shell's Plugin configuration page draws them as the card this plugin
-    // contributes. A row writes into the Host's settings document — which is
-    // what the next page load reads back — so the check follows the value there
-    // rather than trusting the label that moved on screen.
+    // Plugins settings section draws them as the tab this plugin contributes. A
+    // row writes into the Host's settings document — which is what the next page
+    // load reads back — so the check follows the value there rather than
+    // trusting the label that moved on screen.
     await clickByText(page, PLUGINS_NAV)
     await waitForText(page, terminalZh['settings.title'], 'the terminal card')
     await clickByText(page, cardLabel('settings.title', false))

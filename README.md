@@ -15,7 +15,7 @@ English | [中文](README.zh.md)
 ## Requirements
 
 - Node 22.19+ or 24+, with `ssh` configured as usual.
-- DSH `0.1.5-rc.2`. Other releases are untested.
+- DSH `0.1.6-alpha.2` or `0.1.5-rc.2`. Other releases are untested.
 
 ## Install
 
@@ -84,7 +84,7 @@ chooser as detached — and a row's close control in the chooser, which the pane
 Hiding the tab, switching Session, or collapsing the sidebar also leaves a shell running.
 
 **Terminal appearance.** Font, size, line height, scrollback, and cursor blink live in the shell's own settings:
-**Settings → Plugins → Plugin configuration → Terminal appearance**. They are stored in the settings document, so every
+**Settings → Plugins → Terminal appearance**. They are stored in the settings document, so every
 page of this deployment draws a terminal the same way.
 
 ## Config
