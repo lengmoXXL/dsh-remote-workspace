@@ -1,6 +1,6 @@
 [package]
 name = "dsh-remote-agent"
-version = "0.0.3"
+version = "0.0.4"
 edition = "2021"
 rust-version = "1.75"
 description = "The remote daemon of dsh-remote-workspace: serves one machine's filesystem, processes, git worktrees, and terminals to a DeepSeek Harness plugin over a token-authenticated connection."
