@@ -21,7 +21,7 @@
  * @module dsh-remote-workspace/plugin/routing/subprocess
  */
 
-import { PassThrough } from 'node:stream'
+import { Duplex, PassThrough } from 'node:stream'
 import type { Writable } from 'node:stream'
 import type {
   SubprocessCollectedOutputs,
@@ -212,16 +212,45 @@ function createRemoteHandle(
   const stdoutPipe = spec.stdio.stdout === 'pipe' ? new PassThrough() : undefined
   const stderrPipe = spec.stdio.stderr === 'pipe' ? new PassThrough() : undefined
   const bufferedFrames: SpPipeFrame[] = []
+  const pendingControl: string[] = []
   let procId: ProcId | undefined
   let offPipe: (() => void) | undefined
 
+  // The control channel is one bidirectional byte stream: frames the daemon
+  // pushes feed its readable side, and writes become `sp.writeControl` calls.
+  // It exists before `sp.spawn` so a caller that writes immediately has a
+  // stream to write to; bytes that race the process id are held until it lands.
+  const control = spec.stdio.control === 'pipe'
+    ? new Duplex({
+        read() {},
+        write(chunk: Buffer, _encoding, callback) {
+          const data = Buffer.from(chunk).toString('base64')
+          const id = procId
+          if (id === undefined) {
+            pendingControl.push(data)
+            callback()
+            return
+          }
+          channel.request('sp.writeControl', { procId: id, data }).then(
+            () => { callback() },
+            (error: unknown) => { callback(error instanceof Error ? error : new Error(String(error))) },
+          )
+        },
+      })
+    : undefined
+
   const deliverPipeFrame = (frame: SpPipeFrame): void => {
     if (frame.procId !== procId) return
+    const bytes = Buffer.from(frame.data, 'base64')
+    if (frame.stream === 'control') {
+      control?.push(bytes)
+      return
+    }
     const target = frame.stream === 'stdout' ? stdoutPipe : stderrPipe
-    target?.write(Buffer.from(frame.data, 'base64'))
+    target?.write(bytes)
   }
 
-  if (stdoutPipe !== undefined || stderrPipe !== undefined) {
+  if (stdoutPipe !== undefined || stderrPipe !== undefined || control !== undefined) {
     offPipe = channel.onPipeFrame((frame) => {
       if (procId === undefined) {
         bufferedFrames.push(frame)
@@ -237,6 +266,7 @@ function createRemoteHandle(
     offPipe = undefined
     stdoutPipe?.end()
     stderrPipe?.end()
+    control?.push(null)
   }
 
   let startFailure: unknown
@@ -285,6 +315,7 @@ function createRemoteHandle(
             : { data: spec.stdio.stdin.data },
         stdout: collectSpec(spec.stdio.stdout),
         stderr: collectSpec(spec.stdio.stderr),
+        ...spec.stdio.control === 'pipe' ? { control: 'pipe' as const } : {},
         graceMs: spec.graceMs,
         ...spec.env === undefined ? {} : { env: definedEnv(spec.env) },
       })
@@ -293,6 +324,9 @@ function createRemoteHandle(
       // Flush whatever arrived while the id was in flight; order is preserved
       // because the daemon pushes in order on one connection.
       for (const frame of bufferedFrames.splice(0)) deliverPipeFrame(frame)
+      for (const data of pendingControl.splice(0)) {
+        void settled(channel.request('sp.writeControl', { procId: id, data }))
+      }
     } catch (error) {
       startFailure = error
       closePipes()
@@ -341,8 +375,7 @@ function createRemoteHandle(
     stdin: stdinStream,
     stdout: stdoutPipe,
     stderr: stderrPipe,
-    // This provider carries no separate control channel.
-    control: undefined,
+    control,
     collected,
     done,
     terminate() {

@@ -91,7 +91,7 @@ after(async () => {
 
 test('the handshake describes the daemon and what it can do', () => {
   assert.deepEqual(fields(node.info), ['agentVersion', 'arch', 'capability', 'homedir', 'node', 'platform', 'protocol'])
-  assert.equal(node.info.protocol, 1)
+  assert.equal(node.info.protocol, 2)
   assert.deepEqual(fields(node.info.capability), ['pty', 'ripgrep', 'spill'])
   assert.equal(typeof node.info.agentVersion, 'string')
   assert.equal(typeof node.info.arch, 'string')

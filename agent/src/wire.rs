@@ -187,6 +187,16 @@ pub async fn dispatch(method: &str, params: &Value, backends: &Backends) -> Resu
                 )
                 .await
         }
+        "sp.writeControl" => {
+            let source = as_record(params, method)?;
+            backends
+                .sp
+                .write_control(
+                    require_string(source, "procId", method)?,
+                    require_string(source, "data", method)?,
+                )
+                .await
+        }
         "sp.closeStdin" => {
             let source = as_record(params, method)?;
             backends
@@ -403,6 +413,7 @@ fn read_spawn_spec(params: &Value, method: &str) -> Result<SpawnSpec> {
         stdin: read_stdin_mode(source.get("stdin"), method)?,
         stdout: read_output_mode(source.get("stdout"), "stdout", method)?,
         stderr: read_output_mode(source.get("stderr"), "stderr", method)?,
+        control: read_control_mode(source.get("control"), method)?,
         grace_ms,
         env: read_environment(source.get("env"), method)?,
     })
@@ -471,6 +482,18 @@ fn read_stdin_mode(value: Option<&Value>, method: &str) -> Result<StdinMode> {
         _ => Err(Failure::invalid_params(
             method,
             "\"stdin\" must be \"ignore\", \"pipe\", or { data }",
+        )),
+    }
+}
+
+/// Read and validate an optional control-channel request.
+fn read_control_mode(value: Option<&Value>, method: &str) -> Result<bool> {
+    match value {
+        None | Some(Value::Null) => Ok(false),
+        Some(Value::String(mode)) if mode == "pipe" => Ok(true),
+        _ => Err(Failure::invalid_params(
+            method,
+            "\"control\" must be \"pipe\" when present",
         )),
     }
 }

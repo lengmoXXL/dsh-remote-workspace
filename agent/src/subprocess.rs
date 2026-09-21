@@ -16,6 +16,7 @@ use base64::Engine;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::io::{FromRawFd, RawFd};
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::Path;
 use std::process::Stdio;
@@ -23,6 +24,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
+use tokio::net::unix::OwnedWriteHalf;
 use tokio::process::{Child, ChildStdin};
 use tokio::sync::{watch, Mutex as AsyncMutex};
 
@@ -37,11 +39,19 @@ use crate::protocol::{Outcome, OutputMode, SpawnSpec, StdinMode, SP_PIPE_NOTIFIC
 /// Interval between managed-range liveness checks after the child has exited.
 const GROUP_POLL: Duration = Duration::from_millis(25);
 
+/// Descriptor the child opens its inherited control channel on. It matches the
+/// `@deepseek-ai/dsh-subprocess/control` helper both halves share.
+const SUBPROCESS_CONTROL_FD: RawFd = 7;
+
+/// Environment marker announcing the inherited control descriptor.
+const SUBPROCESS_CONTROL_ENV: &str = "DSH_SUBPROCESS_CONTROL";
+
 /// One of a child's two captured streams.
 #[derive(Clone, Copy)]
 enum Which {
-    Out,
-    Err,
+    Out = 0,
+    Err = 1,
+    Control = 2,
 }
 
 impl Which {
@@ -50,6 +60,7 @@ impl Which {
         match self {
             Which::Out => "stdout",
             Which::Err => "stderr",
+            Which::Control => "control",
         }
     }
 
@@ -164,12 +175,55 @@ impl SubprocessBackend {
         // managed range rather than only the process we started.
         command.as_std_mut().process_group(0);
 
-        let mut child = command.spawn().map_err(|error| {
-            Failure::new(
-                "SP_SPAWN_FAILED",
-                format!("cannot spawn \"{program}\": {error}"),
-            )
-        })?;
+        // An optional control channel is a socketpair whose child end becomes
+        // fd 7; the daemon keeps the other end and proxies it over control
+        // frames and `sp.writeControl`.
+        let control_pair = if spec.control {
+            let pair = open_control_pair()?;
+            command.as_std_mut().env(SUBPROCESS_CONTROL_ENV, "pipe");
+            unsafe {
+                command
+                    .as_std_mut()
+                    .pre_exec(move || inherit_control_fd(pair.0));
+            }
+            Some(pair)
+        } else {
+            None
+        };
+
+        let mut child = match command.spawn() {
+            Ok(child) => child,
+            Err(error) => {
+                if let Some((child_fd, agent_fd)) = control_pair {
+                    unsafe {
+                        libc::close(child_fd);
+                        libc::close(agent_fd);
+                    }
+                }
+                return Err(Failure::new(
+                    "SP_SPAWN_FAILED",
+                    format!("cannot spawn \"{program}\": {error}"),
+                ));
+            }
+        };
+
+        // The child owns its duplicated end from the fork; releasing the
+        // daemon's copy of it is what lets the reader observe the child's close.
+        let control_stream = match control_pair {
+            None => None,
+            Some((child_fd, agent_fd)) => {
+                unsafe {
+                    libc::close(child_fd);
+                }
+                let stream = unsafe { std::os::unix::net::UnixStream::from_raw_fd(agent_fd) };
+                Some(tokio::net::UnixStream::from_std(stream).map_err(|error| {
+                    Failure::new(
+                        "SP_SPAWN_FAILED",
+                        format!("cannot adopt the control channel: {error}"),
+                    )
+                })?)
+            }
+        };
         // The child leads its own process group from here on, so a spawn that
         // reports no id is a failure rather than a process to signal later.
         let pid = child.id().map(|value| value as i32).ok_or_else(|| {
@@ -181,6 +235,13 @@ impl SubprocessBackend {
         let stdin = child.stdin.take();
         let stdout_pipe = child.stdout.take();
         let stderr_pipe = child.stderr.take();
+        let (control_read, control_write) = match control_stream {
+            None => (None, None),
+            Some(stream) => {
+                let (read, write) = stream.into_split();
+                (Some(read), Some(write))
+            }
+        };
 
         let managed = Arc::new(ManagedProcess {
             proc_id: unique_id(&self.counter),
@@ -189,18 +250,22 @@ impl SubprocessBackend {
             stdin: AsyncMutex::new(stdin),
             stdout: stdout_window,
             stderr: stderr_window,
+            control: AsyncMutex::new(control_write),
             pipe_stdout: spec.stdout == OutputMode::Pipe,
             pipe_stderr: spec.stderr == OutputMode::Pipe,
+            pipe_control: spec.control,
             state: Mutex::new(ProcessState::default()),
             settled: watch::channel(None).0,
             readers_left: watch::channel(0).0,
-            sequence: [AtomicU64::new(0), AtomicU64::new(0)],
+            sequence: [AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0)],
             outbound: self.outbound.clone(),
         });
 
-        managed
-            .readers_left
-            .send_replace(usize::from(stdout_pipe.is_some()) + usize::from(stderr_pipe.is_some()));
+        managed.readers_left.send_replace(
+            usize::from(stdout_pipe.is_some())
+                + usize::from(stderr_pipe.is_some())
+                + usize::from(spec.control),
+        );
         if let Some(pipe) = stdout_pipe {
             let reader = managed.clone();
             tokio::spawn(async move { read_stream(reader, Which::Out, pipe).await });
@@ -208,6 +273,10 @@ impl SubprocessBackend {
         if let Some(pipe) = stderr_pipe {
             let reader = managed.clone();
             tokio::spawn(async move { read_stream(reader, Which::Err, pipe).await });
+        }
+        if let Some(pipe) = control_read {
+            let reader = managed.clone();
+            tokio::spawn(async move { read_stream(reader, Which::Control, pipe).await });
         }
         {
             let waiter = managed.clone();
@@ -248,6 +317,8 @@ impl SubprocessBackend {
         let buffer = match which {
             Which::Out => managed.stdout.as_ref(),
             Which::Err => managed.stderr.as_ref(),
+            // `from_name` names only the collected streams; control is pushed.
+            Which::Control => None,
         };
         let buffer = buffer.ok_or_else(|| {
             Failure::new(
@@ -274,6 +345,23 @@ impl SubprocessBackend {
     /// Close a child's piped stdin.
     pub async fn close_stdin(&self, proc_id: &str) -> Result<Value> {
         self.require(proc_id)?.close_stdin().await;
+        Ok(json!({}))
+    }
+
+    /// Write bytes to a child started with a control channel.
+    ///
+    /// `data` is base64 like every other binary payload on this wire, so the
+    /// channel carries arbitrary bytes rather than only UTF-8.
+    pub async fn write_control(&self, proc_id: &str, data: &str) -> Result<Value> {
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(data)
+            .map_err(|error| {
+                Failure::invalid_params(
+                    "sp.writeControl",
+                    format!("\"data\" must be base64: {error}"),
+                )
+            })?;
+        self.require(proc_id)?.write_control_bytes(&bytes).await?;
         Ok(json!({}))
     }
 
@@ -328,13 +416,15 @@ struct ManagedProcess {
     stdin: AsyncMutex<Option<ChildStdin>>,
     stdout: Option<StreamBuffer>,
     stderr: Option<StreamBuffer>,
+    control: AsyncMutex<Option<OwnedWriteHalf>>,
     pipe_stdout: bool,
     pipe_stderr: bool,
+    pipe_control: bool,
     state: Mutex<ProcessState>,
     settled: watch::Sender<Option<Outcome>>,
     readers_left: watch::Sender<usize>,
     /// One monotonic frame counter per stream, indexed by [`Which`].
-    sequence: [AtomicU64; 2],
+    sequence: [AtomicU64; 3],
     outbound: Outbound,
 }
 
@@ -359,6 +449,23 @@ impl ManagedProcess {
     /// Close the child's piped stdin; a second close is harmless.
     async fn close_stdin(&self) {
         drop(self.stdin.lock().await.take());
+    }
+
+    /// Write to the child's control channel.
+    async fn write_control_bytes(&self, data: &[u8]) -> Result<()> {
+        let mut guard = self.control.lock().await;
+        let Some(control) = guard.as_mut() else {
+            return Err(Failure::new(
+                "SP_UNSUPPORTED_STDIO",
+                "this process was not started with a control channel",
+            ));
+        };
+        control.write_all(data).await.map_err(|error| {
+            Failure::new(
+                "SP_UNSUPPORTED_STDIO",
+                format!("cannot write to the control channel: {error}"),
+            )
+        })
     }
 
     /// Start the terminate ladder once.
@@ -432,6 +539,7 @@ impl ManagedProcess {
         let (buffer, piped) = match which {
             Which::Out => (self.stdout.as_ref(), self.pipe_stdout),
             Which::Err => (self.stderr.as_ref(), self.pipe_stderr),
+            Which::Control => (None, self.pipe_control),
         };
         if let Some(buffer) = buffer {
             buffer.push(chunk);
@@ -510,6 +618,45 @@ async fn await_child(managed: Arc<ManagedProcess>, mut child: Child) {
         state.settled.clone()
     };
     managed.settled.send_replace(settled);
+}
+
+/// Open one connected socketpair for a child's control channel.
+/// @returns the child end and the daemon end, both close-on-exec.
+fn open_control_pair() -> Result<(RawFd, RawFd)> {
+    let mut fds = [0 as RawFd; 2];
+    let opened = unsafe { libc::socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, fds.as_mut_ptr()) };
+    if opened != 0 {
+        return Err(Failure::new(
+            "SP_SPAWN_FAILED",
+            format!(
+                "cannot create the control channel: {}",
+                std::io::Error::last_os_error()
+            ),
+        ));
+    }
+    // Both ends start close-on-exec; the child keeps only a duplicate of fd 7.
+    unsafe {
+        libc::fcntl(fds[0], libc::F_SETFD, libc::FD_CLOEXEC);
+        libc::fcntl(fds[1], libc::F_SETFD, libc::FD_CLOEXEC);
+    }
+    Ok((fds[0], fds[1]))
+}
+
+/// Publish the control channel at fd 7 in the forked child.
+/// @param child_fd - the socketpair's child end.
+/// @returns an error when the descriptor cannot be published.
+fn inherit_control_fd(child_fd: RawFd) -> std::io::Result<()> {
+    if child_fd != SUBPROCESS_CONTROL_FD {
+        if unsafe { libc::dup2(child_fd, SUBPROCESS_CONTROL_FD) } < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        unsafe {
+            libc::close(child_fd);
+        }
+    } else if unsafe { libc::fcntl(SUBPROCESS_CONTROL_FD, libc::F_SETFD, 0) } < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
 }
 
 /// Resolve one candidate path to a regular, executable, canonical file.

@@ -28,7 +28,7 @@
  * result bumps this, and the daemon refuses a mismatched handshake instead of
  * degrading.
  */
-export const PROTOCOL_VERSION = 1
+export const PROTOCOL_VERSION = 2
 
 /** Prefix every composite target key the plugin mints carries. */
 export const TARGET_KEY_PREFIX = 'node:'
@@ -235,6 +235,11 @@ export interface WireSpawnSpec {
   readonly stdout: WireOutputMode
   /** stderr disposition. */
   readonly stderr: WireOutputMode
+  /**
+   * Ask for a separate bidirectional control channel, delivered as
+   * {@link SubprocessHandle.control}. Omitted means the child gets none.
+   */
+  readonly control?: 'pipe'
   /** Grace the daemon's termination ladder may spend before killing. */
   readonly graceMs: number
   /** Explicit environment entries layered over the daemon's own scrubbed base. */
@@ -305,8 +310,12 @@ export function asTermId(value: string): TermId {
 export interface SpPipeFrame {
   /** The process the chunk belongs to. */
   readonly procId: ProcId
-  /** Which of the two streams produced it. */
-  readonly stream: 'stdout' | 'stderr'
+  /**
+   * Which pushed channel produced it: a raw stdout/stderr byte stream, or the
+   * child's control channel (which the host also writes back over
+   * {@link WireMethods}['sp.writeControl']).
+   */
+  readonly stream: 'stdout' | 'stderr' | 'control'
   /** Monotonic per-stream sequence number, starting at 0. */
   readonly seq: number
   /** Raw bytes, base64. */
@@ -417,6 +426,7 @@ export interface WireMethods {
     result: WireOutputRead
   }
   'sp.writeStdin': { params: { procId: ProcId; data: string }; result: Record<string, never> }
+  'sp.writeControl': { params: { procId: ProcId; data: string }; result: Record<string, never> }
   'sp.closeStdin': { params: { procId: ProcId }; result: Record<string, never> }
   'sp.terminate': { params: { procId: ProcId }; result: Record<string, never> }
   'sp.waitForExit': { params: { procId: ProcId }; result: Record<string, never> }

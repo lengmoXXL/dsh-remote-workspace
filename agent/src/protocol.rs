@@ -11,7 +11,7 @@
 //! @module dsh-remote-agent/protocol
 
 /// Protocol revision; a mismatch is refused at the handshake.
-pub const PROTOCOL_VERSION: i64 = 1;
+pub const PROTOCOL_VERSION: i64 = 2;
 
 /// The notification a daemon pushes for every chunk of a `'pipe'` stream.
 pub const SP_PIPE_NOTIFICATION: &str = "sp.pipe";
@@ -55,6 +55,8 @@ pub struct SpawnSpec {
     pub stdout: OutputMode,
     /// stderr disposition.
     pub stderr: OutputMode,
+    /// Whether the child gets an inherited bidirectional control channel.
+    pub control: bool,
     /// Grace the termination ladder may spend before killing.
     pub grace_ms: u64,
     /// Explicit environment entries layered over the daemon's scrubbed base.
