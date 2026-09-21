@@ -21,6 +21,9 @@
  * @module dsh-remote-workspace/plugin/routing/subprocess
  */
 
+import { createHash } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
+import { basename } from 'node:path'
 import { Duplex, PassThrough } from 'node:stream'
 import type { Writable } from 'node:stream'
 import type {
@@ -306,7 +309,7 @@ function createRemoteHandle(
     let id: ProcId
     try {
       const started = await channel.request('sp.spawn', {
-        argv: [...spec.argv],
+        argv: await translateRemoteArgv(channel, spec.argv),
         cwd: remoteCwd,
         stdin: spec.stdio.stdin === 'pipe'
           ? 'pipe'
@@ -406,6 +409,75 @@ function definedEnv(env: NodeJS.ProcessEnv): Record<string, string> {
     if (value !== undefined) out[key] = value
   }
   return out
+}
+
+/** Directories whose executables every POSIX node already has. */
+const SYSTEM_EXECUTABLE_PREFIXES = ['/bin/', '/sbin/', '/usr/bin/', '/usr/sbin/', '/usr/local/bin/', '/usr/local/sbin/']
+
+/** Host package directories whose assets a remote child may need staged. */
+const HOST_ASSET_SEGMENT = '/node_modules/'
+
+/** Where a staged host asset lands on the node, beside the system temp area. */
+const STAGED_ASSET_ROOT = '/tmp/dsh-remote-assets'
+
+/**
+ * Rewrite one remote child's argv so every path names something the node has.
+ *
+ * The subprocess seam resolves executables and host assets in the caller's
+ * world, so a spawn carrying another machine's absolute paths arrives naming
+ * files only this host has. The node's own resolution stands in for the
+ * executable (the host binary would not run there anyway), and a host package
+ * asset — the PTC runtime's bootstrap script is the one caller — is copied to
+ * the node and its path replaced by the staged copy.
+ * @param channel - the live node channel.
+ * @param argv - the caller's argv, already executable-rewritten.
+ * @returns the argv to send.
+ */
+async function translateRemoteArgv(channel: NodeChannel, argv: readonly string[]): Promise<string[]> {
+  const translated = [...argv]
+  const head = translated[0]
+  if (
+    head !== undefined
+    && head.startsWith('/')
+    && !SYSTEM_EXECUTABLE_PREFIXES.some(prefix => head.startsWith(prefix))
+    && await missingOnNode(channel, head)
+  ) {
+    translated[0] = basename(head)
+  }
+  for (let index = 1; index < translated.length; index += 1) {
+    const value = translated[index]
+    if (value === undefined || !value.startsWith('/') || !value.includes(HOST_ASSET_SEGMENT)) continue
+    if (!await missingOnNode(channel, value)) continue
+    translated[index] = await stageHostAsset(channel, value)
+  }
+  return translated
+}
+
+/** Whether the node has no readable entry at one absolute path. */
+async function missingOnNode(channel: NodeChannel, path: string): Promise<boolean> {
+  try {
+    return await channel.request('fs.stat', { path }) === null
+  } catch {
+    // A path the daemon refuses to describe is not one to rewrite blindly.
+    return false
+  }
+}
+
+/**
+ * Copy one host package asset to the node and return the node's path.
+ * @param channel - the live node channel.
+ * @param hostPath - absolute path in this host's filesystem.
+ * @returns the staged path in the node's filesystem.
+ * @throws when the asset cannot be read, so the spawn reports the real reason.
+ */
+async function stageHostAsset(channel: NodeChannel, hostPath: string): Promise<string> {
+  const bytes = await readFile(hostPath)
+  // The daemon writes text; a binary asset is left for the node to report.
+  if (bytes.includes(0)) return hostPath
+  const digest = createHash('sha1').update(hostPath).digest('hex').slice(0, 16)
+  const staged = `${STAGED_ASSET_ROOT}/${digest}-${basename(hostPath)}`
+  await channel.request('fs.writeText', { path: staged, content: bytes.toString('utf8') })
+  return staged
 }
 
 /**

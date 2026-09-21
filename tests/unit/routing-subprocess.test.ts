@@ -7,6 +7,8 @@
  */
 
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { test } from 'node:test'
 import type { SubprocessHandle, SubprocessRuntime, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import type { SpPipeFrame } from '../../src/remote/protocol.ts'
@@ -43,6 +45,7 @@ function fakeDaemon(options: {
   exitCode?: number | null
   spawnError?: NodeRequestError
   onCall?: (method: string, params: unknown) => void
+  missingOnNode?: (path: string) => boolean
 }) {
   const calls: { method: string; params: unknown }[] = []
   const chunks = { stdout: options.stdout ?? [], stderr: options.stderr ?? [] }
@@ -56,8 +59,14 @@ function fakeDaemon(options: {
     request(method, params) {
       calls.push({ method, params })
       options.onCall?.(method, params)
-      const record = params as { stream?: 'stdout' | 'stderr'; fromByte?: number }
+      const record = params as { stream?: 'stdout' | 'stderr'; fromByte?: number; path?: string }
       switch (method) {
+        case 'fs.stat':
+          return Promise.resolve(
+            options.missingOnNode?.(record.path ?? '') === true
+              ? null
+              : { version: 'v1', type: 'file' },
+          ) as never
         case 'sp.spawn':
           if (options.spawnError !== undefined) return Promise.reject(options.spawnError) as never
           return Promise.resolve({ procId: 'p1' }) as never
@@ -262,6 +271,61 @@ test('a non-ripgrep absolute path is passed through for the node to judge', asyn
   await handle.done
 
   assert.deepEqual((calls[0]?.params as { argv: readonly string[] }).argv, ['/usr/bin/env', 'node'])
+})
+
+test('a host-only executable collapses to the node-resolved bare name', async () => {
+  const { channel, calls } = fakeDaemon({
+    stdout: [],
+    missingOnNode: path => path === '/opt/host-only/node',
+  })
+  const routing = createRoutingSubprocessRuntime({
+    localProc: unusedLocal,
+    anchors: () => anchors,
+    channel: () => channel,
+  })
+  const handle = routing.spawn({ ...spec('/srv/app/login'), argv: ['/opt/host-only/node', '--version'] })
+  await handle.done
+
+  const spawn = calls.find(call => call.method === 'sp.spawn')?.params as { argv: readonly string[] }
+  assert.deepEqual(spawn.argv, ['node', '--version'])
+})
+
+test('a host package asset is staged onto the node and its path rewritten', async () => {
+  const asset = join(process.cwd(), 'node_modules', '@deepseek-ai', 'dsh-subprocess', 'package.json')
+  const content = await readFile(asset, 'utf8')
+  const { channel, calls } = fakeDaemon({ stdout: [], missingOnNode: path => path === asset })
+  const routing = createRoutingSubprocessRuntime({
+    localProc: unusedLocal,
+    anchors: () => anchors,
+    channel: () => channel,
+  })
+  const handle = routing.spawn({ ...spec('/srv/app/login'), argv: ['/usr/bin/node', asset] })
+  await handle.done
+
+  const spawn = calls.find(call => call.method === 'sp.spawn')?.params as { argv: readonly string[] }
+  const staged = spawn.argv[1]!
+  assert.equal(spawn.argv[0], '/usr/bin/node', 'a system executable is left for the node to judge')
+  assert.match(staged, /^\/tmp\/dsh-remote-assets\/[0-9a-f]{16}-package\.json$/)
+
+  const write = calls.find(call => call.method === 'fs.writeText')?.params as { path: string; content: string }
+  assert.equal(write.path, staged)
+  assert.equal(write.content, content)
+})
+
+test('a host asset the node already has is left alone', async () => {
+  const asset = join(process.cwd(), 'node_modules', '@deepseek-ai', 'dsh-subprocess', 'package.json')
+  const { channel, calls } = fakeDaemon({ stdout: [] })
+  const routing = createRoutingSubprocessRuntime({
+    localProc: unusedLocal,
+    anchors: () => anchors,
+    channel: () => channel,
+  })
+  const handle = routing.spawn({ ...spec('/srv/app/login'), argv: ['/usr/bin/node', asset] })
+  await handle.done
+
+  const spawn = calls.find(call => call.method === 'sp.spawn')?.params as { argv: readonly string[] }
+  assert.equal(spawn.argv[1], asset)
+  assert.equal(calls.some(call => call.method === 'fs.writeText'), false)
 })
 
 test('the local branch is delegated untouched', () => {
