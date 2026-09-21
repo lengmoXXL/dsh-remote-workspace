@@ -421,6 +421,29 @@ const HOST_ASSET_SEGMENT = '/node_modules/'
 const STAGED_ASSET_ROOT = '/tmp/dsh-remote-assets'
 
 /**
+ * Host sandbox runners. The sandbox seam confines by prefixing one of these and
+ * a `--` separator, and each exists only on the host that chose it.
+ */
+const HOST_SANDBOX_RUNNERS = ['sandbox-exec', 'bwrap', 'landlock-run']
+
+/**
+ * Drop a host sandbox wrapper from one remote spawn's argv.
+ *
+ * `confine` wraps a command as `[runner, …profile, '--', …command]`. That
+ * runner is a same-world tool: a remote node has neither it nor any reason to
+ * run it, because there the machine is the boundary. Sending it unwrapped runs
+ * the command the wrapper was protecting instead of the wrapper itself.
+ * @param argv - the caller's argv, possibly wrapped by this host's sandbox.
+ * @returns the command argv with any recognized host-sandbox prefix removed.
+ */
+function stripHostSandbox(argv: readonly string[]): readonly string[] {
+  const head = argv[0]
+  if (head === undefined || !HOST_SANDBOX_RUNNERS.includes(basename(head))) return argv
+  const separator = argv.indexOf('--')
+  return separator >= 0 && separator + 1 < argv.length ? argv.slice(separator + 1) : argv
+}
+
+/**
  * Rewrite one remote child's argv so every path names something the node has.
  *
  * The subprocess seam resolves executables and host assets in the caller's
@@ -430,11 +453,12 @@ const STAGED_ASSET_ROOT = '/tmp/dsh-remote-assets'
  * asset — the PTC runtime's bootstrap script is the one caller — is copied to
  * the node and its path replaced by the staged copy.
  * @param channel - the live node channel.
- * @param argv - the caller's argv, already executable-rewritten.
+ * @param argv - the caller's argv, already executable-rewritten and wrapped by
+ *   this host's sandbox when the session is confined.
  * @returns the argv to send.
  */
 async function translateRemoteArgv(channel: NodeChannel, argv: readonly string[]): Promise<string[]> {
-  const translated = [...argv]
+  const translated = [...stripHostSandbox(argv)]
   const head = translated[0]
   if (
     head !== undefined

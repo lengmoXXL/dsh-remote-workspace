@@ -312,6 +312,37 @@ test('a host package asset is staged onto the node and its path rewritten', asyn
   assert.equal(write.content, content)
 })
 
+test('a host sandbox wrapper is removed before the command reaches the node', async () => {
+  const { channel, calls } = fakeDaemon({ stdout: [] })
+  const routing = createRoutingSubprocessRuntime({
+    localProc: unusedLocal,
+    anchors: () => anchors,
+    channel: () => channel,
+  })
+  const handle = routing.spawn({
+    ...spec('/srv/app/login'),
+    argv: ['sandbox-exec', '-p', '(version 1)', '--', 'echo', 'hi', '--', 'tail'],
+  })
+  await handle.done
+
+  const spawn = calls.find(call => call.method === 'sp.spawn')?.params as { argv: readonly string[] }
+  assert.deepEqual(spawn.argv, ['echo', 'hi', '--', 'tail'])
+})
+
+test('an ordinary command containing a -- separator is left alone', async () => {
+  const { channel, calls } = fakeDaemon({ stdout: [] })
+  const routing = createRoutingSubprocessRuntime({
+    localProc: unusedLocal,
+    anchors: () => anchors,
+    channel: () => channel,
+  })
+  const handle = routing.spawn({ ...spec('/srv/app/login'), argv: ['git', 'commit', '--', 'file'] })
+  await handle.done
+
+  const spawn = calls.find(call => call.method === 'sp.spawn')?.params as { argv: readonly string[] }
+  assert.deepEqual(spawn.argv, ['git', 'commit', '--', 'file'])
+})
+
 test('a host asset the node already has is left alone', async () => {
   const asset = join(process.cwd(), 'node_modules', '@deepseek-ai', 'dsh-subprocess', 'package.json')
   const { channel, calls } = fakeDaemon({ stdout: [] })
