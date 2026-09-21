@@ -6,6 +6,7 @@ use common::TempDir;
 use dsh_remote_agent::fs::FsBackend;
 use dsh_remote_agent::git::GitBackend;
 use dsh_remote_agent::jsonrpc::encode;
+use dsh_remote_agent::protocol::PROTOCOL_VERSION;
 use dsh_remote_agent::server::{serve, SharedBackends};
 use serde_json::{json, Value};
 use std::path::Path;
@@ -98,9 +99,9 @@ async fn the_handshake_reports_the_build_identity_and_capabilities() {
     let address = start(fixture.path(), "secret").await;
     let mut client = Client::connect(&address).await;
 
-    let answer = client.hello("secret", 1).await;
+    let answer = client.hello("secret", PROTOCOL_VERSION).await;
     let info = &answer["result"];
-    assert_eq!(info["protocol"], 1);
+    assert_eq!(info["protocol"], PROTOCOL_VERSION);
     assert_eq!(info["agentVersion"], "test-build");
     assert_eq!(info["capability"]["pty"], true);
     assert_eq!(info["capability"]["spill"], false);
@@ -114,7 +115,7 @@ async fn a_wrong_token_is_refused_with_the_protocol_error_data() {
     let address = start(fixture.path(), "secret").await;
     let mut client = Client::connect(&address).await;
 
-    let answer = client.hello("wrong", 1).await;
+    let answer = client.hello("wrong", PROTOCOL_VERSION).await;
     assert_eq!(answer["error"]["data"]["code"], "FS_IO_ERROR");
     assert_eq!(answer["error"]["message"], "invalid token");
 }
@@ -151,7 +152,7 @@ async fn an_unknown_method_and_bad_parameters_report_distinct_codes() {
     let fixture = TempDir::new("drw-server-errors");
     let address = start(fixture.path(), "secret").await;
     let mut client = Client::connect(&address).await;
-    client.hello("secret", 1).await;
+    client.hello("secret", PROTOCOL_VERSION).await;
 
     let unknown = client.request("fs.nope", json!({})).await;
     assert_eq!(unknown["error"]["code"], -32601);
@@ -170,7 +171,7 @@ async fn serves_filesystem_requests_over_the_socket() {
     std::fs::write(fixture.join("note.txt"), "hello\n").unwrap();
     let address = start(fixture.path(), "secret").await;
     let mut client = Client::connect(&address).await;
-    client.hello("secret", 1).await;
+    client.hello("secret", PROTOCOL_VERSION).await;
 
     let stat = client
         .request(
@@ -196,7 +197,7 @@ async fn runs_a_process_over_the_socket_while_the_connection_keeps_serving() {
     let fixture = TempDir::new("drw-server-spawn");
     let address = start(fixture.path(), "secret").await;
     let mut client = Client::connect(&address).await;
-    client.hello("secret", 1).await;
+    client.hello("secret", PROTOCOL_VERSION).await;
 
     let spawned = client
         .request(

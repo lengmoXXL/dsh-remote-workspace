@@ -179,7 +179,10 @@ async fn a_spawn_after_close_ends_the_terminal_instead_of_publishing_it() {
 
     let deadline = Instant::now() + Duration::from_secs(5);
     while unsafe { libc::kill(pid, 0) } == 0 {
-        assert!(Instant::now() < deadline, "the late terminal is still alive");
+        assert!(
+            Instant::now() < deadline,
+            "the late terminal is still alive"
+        );
         tokio::time::sleep(Duration::from_millis(25)).await;
     }
 }

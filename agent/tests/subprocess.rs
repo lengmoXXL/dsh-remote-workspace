@@ -26,6 +26,7 @@ fn spec(cwd: &Path, argv: &[&str]) -> SpawnSpec {
         stdin: StdinMode::Ignore,
         stdout: OutputMode::Collect { max_bytes: 1 << 20 },
         stderr: OutputMode::Collect { max_bytes: 1 << 20 },
+        control: false,
         grace_ms: 2_000,
         env: Vec::new(),
     }
@@ -155,9 +156,7 @@ async fn resolves_an_absolute_path_and_searches_a_given_path() {
     assert_eq!(searched["path"], canonical_sh);
 
     assert_eq!(
-        sp.resolve_executable("sub/dir", &[])
-            .unwrap_err()
-            .code,
+        sp.resolve_executable("sub/dir", &[]).unwrap_err().code,
         "SP_NOT_EXECUTABLE"
     );
     assert_eq!(

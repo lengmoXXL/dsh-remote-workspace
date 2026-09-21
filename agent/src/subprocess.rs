@@ -112,11 +112,7 @@ impl SubprocessBackend {
     }
 
     /// Resolve a program name to an absolute executable path.
-    pub fn resolve_executable(
-        &self,
-        command: &str,
-        env: &[(String, String)],
-    ) -> Result<Value> {
+    pub fn resolve_executable(&self, command: &str, env: &[(String, String)]) -> Result<Value> {
         if Path::new(command).is_absolute() {
             return Ok(json!({ "path": canonical_executable(command)? }));
         }
