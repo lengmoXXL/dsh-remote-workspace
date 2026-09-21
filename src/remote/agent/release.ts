@@ -35,6 +35,15 @@ const DOWNLOAD_ROOT = `https://github.com/${RELEASE_REPOSITORY}/releases/downloa
 /** The regular file every release archive carries: the agent itself. */
 const AGENT_MEMBER = 'dsh-remote-agent'
 
+/**
+ * The native PTC program host the same release carries.
+ *
+ * A node that has no Node runtime runs this in place of the interpreter the
+ * harness's PTC provider would otherwise spawn there, so it ships as its own
+ * archive and is fetched only by machines that actually run a program.
+ */
+export const PTC_HOST_MEMBER = 'dsh-ptc-host'
+
 /** The sums file every release carries beside its archives. */
 const SUMS_FILE = 'SHA256SUMS'
 
@@ -64,6 +73,11 @@ export interface AgentBinaryOptions {
   readonly version: string
   /** Release asset for the machine's platform, from {@link agentAssetName}. */
   readonly assetName: string
+  /**
+   * Regular file to unpack from the archive. Defaults to the agent itself;
+   * {@link PTC_HOST_MEMBER} names the PTC program host.
+   */
+  readonly member?: string
   /** Host directory the binary cache lives under. */
   readonly cacheDir: string
   /** Downloads one URL; injectable so tests need no network. */
@@ -90,15 +104,38 @@ export interface AgentBinaryOptions {
  * @throws when the machine reports a platform or architecture with no asset.
  */
 export function agentAssetName(platform: string, arch: string): string {
+  return binaryAssetName(AGENT_MEMBER, platform, arch)
+}
+
+/**
+ * Name the release asset carrying the native PTC program host.
+ * @param platform - `uname -s` output, e.g. `Linux`.
+ * @param arch - `uname -m` output, e.g. `x86_64`.
+ * @returns the release asset name.
+ * @throws when the machine reports a platform or architecture with no asset.
+ */
+export function ptcHostAssetName(platform: string, arch: string): string {
+  return binaryAssetName(PTC_HOST_MEMBER, platform, arch)
+}
+
+/**
+ * Name one binary's release asset for a machine's reported platform.
+ * @param binary - the release member the archive holds.
+ * @param platform - `uname -s` output.
+ * @param arch - `uname -m` output.
+ * @returns the asset name.
+ * @throws when the machine reports a platform or architecture with no asset.
+ */
+function binaryAssetName(binary: string, platform: string, arch: string): string {
   const os = PLATFORMS[platform.trim().toLowerCase()]
   const cpu = ARCHITECTURES[arch.trim().toLowerCase()]
   if (os === undefined || cpu === undefined) {
     throw new Error(
       `the machine reports platform "${platform.trim()}" and architecture "${arch.trim()}", `
-      + 'which has no dsh-remote-agent release; it ships for Linux and Darwin on x86_64 and aarch64',
+      + `which has no ${binary} release; it ships for Linux and Darwin on x86_64 and aarch64`,
     )
   }
-  return `dsh-remote-agent-${os}-${cpu}`
+  return `${binary}-${os}-${cpu}`
 }
 
 /** The release file one asset is published as. */
@@ -152,7 +189,7 @@ function headerSize(header: Buffer): number {
  * The agent binary inside one release archive.
  *
  * Only what this repository's own release job writes needs to be understood:
- * one regular file, named {@link AGENT_MEMBER}, packed by `tar -czf`. A tar may
+ * one regular file, named by the caller, packed by `tar -czf`. A tar may
  * write metadata records ahead of it — a PAX header from a newer tar, a long
  * name — so every record is stepped over by its own size until the file is
  * found, rather than assuming it comes first.
@@ -161,7 +198,7 @@ function headerSize(header: Buffer): number {
  * @returns the member's bytes.
  * @throws when the archive carries no such member or is not a gzipped tar.
  */
-function archiveMember(archive: Buffer, sourceUrl: string): Buffer {
+function archiveMember(archive: Buffer, sourceUrl: string, member: string): Buffer {
   let tar: Buffer
   try {
     tar = gunzipSync(archive)
@@ -179,12 +216,12 @@ function archiveMember(archive: Buffer, sourceUrl: string): Buffer {
     const type = String.fromCharCode(header[156] ?? 0)
     const name = headerText(header, 0, 100)
     // NUL and '0' are the regular-file records; every other type is metadata.
-    if ((type === '0' || type === '\0') && name.split('/').pop() === AGENT_MEMBER) {
+    if ((type === '0' || type === '\0') && name.split('/').pop() === member) {
       return tar.subarray(start, start + size)
     }
     offset = start + Math.ceil(size / TAR_BLOCK) * TAR_BLOCK
   }
-  throw new Error(`${sourceUrl} carries no "${AGENT_MEMBER}"`)
+  throw new Error(`${sourceUrl} carries no "${member}"`)
 }
 
 /**
@@ -240,7 +277,7 @@ export async function resolveAgentBinary(options: AgentBinaryOptions): Promise<B
       `the download from ${archiveUrl} failed its SHA-256 check: expected ${expected}, got ${actual}`,
     )
   }
-  const binary = archiveMember(archive, archiveUrl)
+  const binary = archiveMember(archive, archiveUrl, options.member ?? AGENT_MEMBER)
 
   // A reader of the cache must never observe a partial download, so the bytes
   // land on a private temp path and are renamed into place in one step. The

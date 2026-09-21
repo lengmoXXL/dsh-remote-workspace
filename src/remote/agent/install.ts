@@ -33,7 +33,7 @@
  * @module dsh-remote-workspace/remote/agent/install
  */
 
-import { agentAssetName, resolveAgentBinary } from './release.ts'
+import { PTC_HOST_MEMBER, agentAssetName, ptcHostAssetName, resolveAgentBinary } from './release.ts'
 import type { AgentBinaryOptions } from './release.ts'
 import type { SshCommandResult, SshRunOptions, SshTarget } from '../ssh.ts'
 import { runSsh, sshFailure } from '../ssh.ts'
@@ -47,7 +47,7 @@ import { runSsh, sshFailure } from '../ssh.ts'
  * this together with the release tag and `agent/Cargo.toml`, which a unit test
  * keeps in step.
  */
-export const AGENT_VERSION = '0.0.5'
+export const AGENT_VERSION = '0.0.6'
 
 /**
  * Version of the launch recipe recorded in `launch-env.json`.
@@ -147,6 +147,17 @@ const READ_INSTALLED = 'cat "$HOME/.dsh/remote-agent/installed.json" 2>/dev/null
 /** Read the plugin's own marker for how the running agent was launched. */
 const READ_LAUNCH_ENV = 'cat "$HOME/.dsh/remote-agent/launch-env.json" 2>/dev/null || true'
 
+/**
+ * Read the PTC program host's marker, but only while its binary is still
+ * executable.
+ *
+ * One round trip answers both halves of the reuse question: an executable with
+ * a matching marker is the build this plugin installed, and anything else — a
+ * missing binary, a stale marker, a half-written upload — is a fresh install.
+ */
+const READ_PTC_HOST = 'test -x "$HOME/.dsh/remote-agent/dsh-ptc-host"'
+  + ' && cat "$HOME/.dsh/remote-agent/ptc-host.json" 2>/dev/null || true'
+
 /** Seed the agent directory before anything is written into it. */
 const ENSURE_DIR = 'mkdir -p "$HOME/.dsh/remote-agent"'
 
@@ -168,6 +179,14 @@ const WRITE_TOKEN = 'cat > "$HOME/.dsh/remote-agent/token" && chmod 600 "$HOME/.
 
 /** Record how the agent was launched, so a changed recipe forces a restart. */
 const WRITE_LAUNCH_ENV = 'cat > "$HOME/.dsh/remote-agent/launch-env.json"'
+
+/** Replace the PTC program host through a temp name, exactly as the agent is. */
+const UPLOAD_PTC_HOST = 'cat > "$HOME/.dsh/remote-agent/dsh-ptc-host.new"'
+  + ' && chmod 755 "$HOME/.dsh/remote-agent/dsh-ptc-host.new"'
+  + ' && mv "$HOME/.dsh/remote-agent/dsh-ptc-host.new" "$HOME/.dsh/remote-agent/dsh-ptc-host"'
+
+/** Record which PTC program host build the step above installed. */
+const WRITE_PTC_HOST = 'cat > "$HOME/.dsh/remote-agent/ptc-host.json"'
 
 /**
  * The agent invocation, run with `exec` from inside the interactive login shell.
@@ -289,19 +308,23 @@ async function runChecked(
   if (result.code !== 0) throw new Error(sshFailure(ssh.target, result.stderr, fallback))
 }
 
-/** Read the version marker the plugin writes beside the binary. */
+/** The version one of this plugin's own marker files records, when it records one. */
+function markerVersion(stdout: string): string | undefined {
+  try {
+    const marker = JSON.parse(stdout) as { version?: unknown }
+    return typeof marker.version === 'string' ? marker.version : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** Read the version marker the plugin writes beside the agent binary. */
 async function installedVersion(
   run: AgentCommandRunner,
   ssh: SshTarget,
 ): Promise<string | undefined> {
   const result = await run(ssh, READ_INSTALLED)
-  if (result.code !== 0) return undefined
-  try {
-    const marker = JSON.parse(result.stdout) as { version?: unknown }
-    return typeof marker.version === 'string' ? marker.version : undefined
-  } catch {
-    return undefined
-  }
+  return result.code === 0 ? markerVersion(result.stdout) : undefined
 }
 
 /** Whether a process id is still alive on the machine, best effort. */
@@ -444,4 +467,76 @@ export async function ensureAgent(options: EnsureAgentOptions): Promise<AgentEnd
     }
     await new Promise(resolve => setTimeout(resolve, pollMs))
   }
+}
+
+/** What {@link ensurePtcHost} needs from its caller. */
+export interface EnsurePtcHostOptions {
+  /** The machine to install onto. */
+  readonly ssh: SshTarget
+  /** Build to install; the plugin uses its own agent version, which is one release. */
+  readonly version: string
+  /** Host directory holding cached release binaries. */
+  readonly cacheDir: string
+  /** Command runner; defaults to {@link runSsh}. */
+  readonly run?: AgentCommandRunner
+  /** Binary resolver; defaults to {@link resolveAgentBinary}. */
+  readonly resolveBinary?: (options: AgentBinaryOptions) => Promise<Buffer>
+}
+
+/**
+ * Ensure one machine carries this release's native PTC program host.
+ *
+ * A machine whose `run_code` runs in a routed workspace needs an interpreter
+ * there, and the harness's PTC provider would otherwise launch Node. This
+ * binary is that interpreter: the same process protocol, evaluated by an
+ * embedded V8, so the machine needs no Node runtime of its own.
+ *
+ * It is installed beside the agent, in the background as soon as that machine
+ * connects, so the first program run there does not wait on the download. A
+ * machine that already holds the current build is left untouched, so the second
+ * caller — the program that overtakes the warm-up — costs one round trip.
+ * @param options - the machine, the build, and the binary cache.
+ * @throws when the platform cannot be resolved, the archive cannot be fetched,
+ *   or the upload fails.
+ */
+export async function ensurePtcHost(options: EnsurePtcHostOptions): Promise<void> {
+  const run = options.run ?? runSsh
+  const resolveBinary = options.resolveBinary ?? resolveAgentBinary
+  const { ssh, version, cacheDir } = options
+
+  const installed = await run(ssh, READ_PTC_HOST)
+  if (installed.code === 0 && markerVersion(installed.stdout) === version) return
+
+  // The archive name is chosen from what the machine reports, so the platform
+  // is read before anything is fetched rather than guessed from this host.
+  const uname = await run(ssh, 'uname -s; uname -m')
+  if (uname.code !== 0) {
+    throw new Error(
+      sshFailure(ssh.target, uname.stderr, `could not read the platform of "${ssh.target}"`),
+    )
+  }
+  const [platform, arch] = uname.stdout.split('\n')
+  const assetName = ptcHostAssetName(platform?.trim() ?? '', arch?.trim() ?? '')
+  const binary = await resolveBinary({
+    version,
+    assetName,
+    member: PTC_HOST_MEMBER,
+    cacheDir,
+  })
+
+  await runChecked(run, ssh, ENSURE_DIR, `could not create ~/.dsh/remote-agent on "${ssh.target}"`)
+  await runChecked(
+    run,
+    ssh,
+    UPLOAD_PTC_HOST,
+    `could not install the PTC program host on "${ssh.target}"`,
+    binary,
+  )
+  await runChecked(
+    run,
+    ssh,
+    WRITE_PTC_HOST,
+    `could not record the installed PTC program host on "${ssh.target}"`,
+    JSON.stringify({ version }),
+  )
 }

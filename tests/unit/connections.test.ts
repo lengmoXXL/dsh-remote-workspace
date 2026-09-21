@@ -200,6 +200,48 @@ test('an install in flight is published on the status and cleared once ready', a
   assert.equal(connections.status(asNodeId('n1')).progress, undefined)
 })
 
+test('the PTC program host is warmed once and its path published', async () => {
+  const installs: string[] = []
+  const connections = createNodeConnections({
+    cacheDir: '/cache',
+    ensurePtcHost: (options) => {
+      installs.push(options.ssh.target)
+      return Promise.resolve()
+    },
+    openTransport: () => Promise.resolve({ host: '127.0.0.1', port: 1, close: () => {} }),
+    connect: () => Promise.resolve(stubNode()),
+  })
+
+  await connections.connect(sshRecord())
+
+  assert.equal(await connections.ptcHost(asNodeId('n1')), '/home/dev/.dsh/remote-agent/dsh-ptc-host')
+  assert.deepEqual(installs, ['me@build-01'])
+  await connections.ptcHost(asNodeId('n1'))
+  assert.deepEqual(installs, ['me@build-01'], 'the warm-up answer is reused, not repeated')
+})
+
+test('a direct address expects a PTC program host it never installed', async () => {
+  let installs = 0
+  const connections = createNodeConnections({
+    ensurePtcHost: () => {
+      installs += 1
+      return Promise.resolve()
+    },
+    openTransport: () => Promise.resolve({ host: 'build-01', port: 7801, close: () => {} }),
+    connect: () => Promise.resolve(stubNode()),
+  })
+
+  await connections.connect(record)
+
+  assert.equal(await connections.ptcHost(asNodeId('n1')), '/home/dev/.dsh/remote-agent/dsh-ptc-host')
+  assert.equal(installs, 0, 'this plugin installed nothing on that machine')
+})
+
+test('a node that is not connected has no PTC program host', async () => {
+  const connections = createNodeConnections()
+  await assert.rejects(() => connections.ptcHost(asNodeId('n1')), /not connected/)
+})
+
 test('a failed install settles the machine and leaves it retryable', async () => {
   let attempts = 0
   const connections = createNodeConnections({

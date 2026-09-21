@@ -13,13 +13,14 @@
  * @module dsh-remote-workspace/models/machines
  */
 
+import { posix } from 'node:path'
 import type { ConnectOptions, ConnectedNode, NodeChannel } from '../remote/client.ts'
 import { NodeRequestError, connectNode } from '../remote/client.ts'
 import type { NodeInfo } from '../remote/protocol.ts'
 import type { NodeId, NodeRecord } from '../storage/nodes.ts'
 import { DEFAULT_FORWARD_TIMEOUT_MS, openTunnel } from '../remote/ssh.ts'
-import type { AgentEndpoint, AgentProgress, EnsureAgentOptions } from '../remote/agent/install.ts'
-import { AGENT_VERSION, ensureAgent } from '../remote/agent/install.ts'
+import type { AgentEndpoint, AgentProgress, EnsureAgentOptions, EnsurePtcHostOptions } from '../remote/agent/install.ts'
+import { AGENT_VERSION, ensureAgent, ensurePtcHost } from '../remote/agent/install.ts'
 
 /** Where one node's connection stands. */
 export type NodeState = 'idle' | 'connecting' | 'ready' | 'failed' | 'disconnected'
@@ -107,6 +108,11 @@ export interface NodeConnectionsDeps {
    * to the SSH installer; injectable so tests need no `ssh` binary or network.
    */
   readonly ensureAgent?: (options: EnsureAgentOptions) => Promise<AgentEndpoint>
+  /**
+   * Installs the machine's native PTC program host. Defaults to the SSH
+   * installer; injectable so tests need no `ssh` binary or network.
+   */
+  readonly ensurePtcHost?: (options: EnsurePtcHostOptions) => Promise<void>
 }
 
 /** How many times a dropped connection is re-established before it is left failed. */
@@ -232,6 +238,14 @@ export interface NodeConnections {
    */
   connect(record: NodeRecord): Promise<NodeInfo>
   /**
+   * The machine's own PTC program host, installed there if this is the first
+   * program for it.
+   * @param nodeId - the record id.
+   * @returns the absolute path of the worker inside the machine.
+   * @throws when the node is not connected or the install fails.
+   */
+  ptcHost(nodeId: NodeId): Promise<string>
+  /**
    * Close one node's connection. Idempotent.
    * @param nodeId - the record id.
    */
@@ -254,7 +268,14 @@ interface Entry {
   recovery: symbol | undefined
   /** The channel handed out for this connection, wrapped to notice its loss. */
   published: NodeChannel | undefined
+  /** The machine this entry is connected to, while it is. */
+  record: NodeRecord | undefined
+  /** The install of this machine's PTC program host, once one has begun. */
+  ptcHost: Promise<string> | undefined
 }
+
+/** Where a machine's native PTC program host sits, relative to its home directory. */
+const PTC_HOST_SEGMENT = ['.dsh', 'remote-agent', 'dsh-ptc-host'] as const
 
 /**
  * Build the connection manager.
@@ -263,10 +284,13 @@ interface Entry {
  */
 export function createNodeConnections(deps: NodeConnectionsDeps = {}): NodeConnections {
   const connect = deps.connect ?? connectNode
+  const cacheDir = deps.cacheDir
+  const agentVersion = deps.agentVersion ?? AGENT_VERSION
+  const installPtcHost = deps.ensurePtcHost ?? ensurePtcHost
   const openTransport = deps.openTransport ?? defaultOpenTransport({
     forwardTimeoutMs: deps.sshForwardTimeoutMs ?? DEFAULT_FORWARD_TIMEOUT_MS,
-    agentVersion: deps.agentVersion ?? AGENT_VERSION,
-    cacheDir: deps.cacheDir,
+    agentVersion,
+    cacheDir,
     ensureAgent: deps.ensureAgent ?? ensureAgent,
   })
   const handshakeTimeoutMs = deps.daemonHandshakeTimeoutMs ?? DEFAULT_HANDSHAKE_TIMEOUT_MS
@@ -296,6 +320,8 @@ export function createNodeConnections(deps: NodeConnectionsDeps = {}): NodeConne
       progress: undefined,
       recovery: undefined,
       published: undefined,
+      record: undefined,
+      ptcHost: undefined,
     }
     entries.set(nodeId, created)
     return created
@@ -304,6 +330,8 @@ export function createNodeConnections(deps: NodeConnectionsDeps = {}): NodeConne
   /** Drop everything a connection holds, leaving the entry itself in place. */
   const clear = (entry: Entry): void => {
     entry.published = undefined
+    entry.record = undefined
+    entry.ptcHost = undefined
     entry.live?.close()
     entry.live = undefined
     entry.pending = undefined
@@ -332,6 +360,41 @@ export function createNodeConnections(deps: NodeConnectionsDeps = {}): NodeConne
     ...entry.progress === undefined ? {} : { progress: entry.progress },
     ...entry.error === undefined ? {} : { error: entry.error },
   })
+
+  /**
+   * The machine's own PTC program host, installing it over SSH on first need.
+   *
+   * A reachable machine is not the same as a machine ready to run a program in,
+   * and the program arrives long after the connection does, so the install is
+   * warmed in the background and every later caller — the warm-up's own
+   * rejection aside — is handed the one promise it produced. A direct address
+   * is one this plugin never installed anything on, so its host is expected to
+   * be there already and the spawn reports it missing if it is not.
+   * @param entry - the connected entry.
+   * @param record - the machine it is connected to.
+   * @returns the absolute path of the worker inside the machine.
+   */
+  const ptcHostFor = (entry: Entry, record: NodeRecord): Promise<string> => {
+    if (entry.ptcHost !== undefined) return entry.ptcHost
+    const home = entry.info?.homedir
+    if (home === undefined) {
+      return Promise.reject(new Error(`"${record.title}" has not reported its home directory`))
+    }
+    const path = posix.join(home, ...PTC_HOST_SEGMENT)
+    if (record.transport.kind !== 'ssh') return Promise.resolve(path)
+    if (cacheDir === undefined) {
+      return Promise.reject(new Error('installing a PTC program host needs the plugin data directory'))
+    }
+    const attempt = installPtcHost({ ssh: record.transport, version: agentVersion, cacheDir })
+      .then(() => path)
+    entry.ptcHost = attempt
+    // A failed install must not become this machine's answer for good: the next
+    // program is allowed to try again.
+    void attempt.catch(() => {
+      if (entry.ptcHost === attempt) entry.ptcHost = undefined
+    })
+    return attempt
+  }
 
   /**
    * Bring a dropped connection back without waiting to be asked.
@@ -423,7 +486,12 @@ export function createNodeConnections(deps: NodeConnectionsDeps = {}): NodeConne
         entry.localPort = record.transport.kind === 'ssh' ? opened.port : undefined
         entry.pending = undefined
         entry.progress = undefined
+        entry.record = record
         entry.state = 'ready'
+        // Fetched now, while nobody is waiting on it: a machine that never runs
+        // a program pays only the connection, and one that does finds the
+        // worker already there.
+        if (record.transport.kind === 'ssh') void ptcHostFor(entry, record).catch(() => {})
         // A forward can die while the socket it carried stays open long
         // enough to look healthy. Publish the loss rather than leaving a
         // `ready` node whose every call hangs, and start bringing it back.
@@ -463,6 +531,14 @@ export function createNodeConnections(deps: NodeConnectionsDeps = {}): NodeConne
     },
 
     connect: connectRecord,
+
+    async ptcHost(nodeId) {
+      const entry = entries.get(nodeId)
+      if (entry === undefined || entry.state !== 'ready' || entry.record === undefined) {
+        throw new Error(`remote node "${nodeId}" is not connected`)
+      }
+      return await ptcHostFor(entry, entry.record)
+    },
 
     disconnect(nodeId) {
       const entry = entries.get(nodeId)

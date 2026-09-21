@@ -10,23 +10,26 @@ permissions:
   contents: write
 
 jobs:
-  # The plugin builds download URLs from the tag and the Cargo.toml version,
-  # so a tag that disagrees with the build identity must never produce assets.
+  # The plugin builds download URLs from the tag and a crate version, so a tag
+  # that disagrees with either build identity must never produce assets. One
+  # release tag carries both binaries, so both versions must equal it.
   guard:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Tag matches agent/Cargo.toml version
+      - name: Tag matches the crate versions
         run: |
-          version=$(grep -m1 '^version' agent/Cargo.toml | sed -E 's/^version *= *"([^"]+)".*/\1/')
-          if [ -z "$version" ]; then
-            echo "agent/Cargo.toml has no version" >&2
-            exit 1
-          fi
-          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
-            echo "tag $GITHUB_REF_NAME does not match v$version from agent/Cargo.toml" >&2
-            exit 1
-          fi
+          for crate in agent ptc-host; do
+            version=$(grep -m1 '^version' "$crate/Cargo.toml" | sed -E 's/^version *= *"([^"]+)".*/\1/')
+            if [ -z "$version" ]; then
+              echo "$crate/Cargo.toml has no version" >&2
+              exit 1
+            fi
+            if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+              echo "tag $GITHUB_REF_NAME does not match v$version from $crate/Cargo.toml" >&2
+              exit 1
+            fi
+          done
 
   build:
     needs: guard
@@ -36,18 +39,22 @@ jobs:
         include:
           - target: x86_64-unknown-linux-musl
             asset: dsh-remote-agent-linux-x86_64
+            host_asset: dsh-ptc-host-linux-x86_64
             os: ubuntu-latest
             builder: cross
           - target: aarch64-unknown-linux-musl
             asset: dsh-remote-agent-linux-aarch64
+            host_asset: dsh-ptc-host-linux-aarch64
             os: ubuntu-latest
             builder: cross
           - target: x86_64-apple-darwin
             asset: dsh-remote-agent-darwin-x86_64
+            host_asset: dsh-ptc-host-darwin-x86_64
             os: macos-latest
             builder: cargo
           - target: aarch64-apple-darwin
             asset: dsh-remote-agent-darwin-aarch64
+            host_asset: dsh-ptc-host-darwin-aarch64
             os: macos-latest
             builder: cargo
     runs-on: ${{ matrix.os }}
@@ -58,34 +65,53 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
-          workspaces: agent
+          workspaces: |
+            agent
+            ptc-host
       # cross supplies the musl toolchain and links statically by default.
       - if: matrix.builder == 'cross'
         uses: taiki-e/install-action@v2
         with:
           tool: cross
-      # Built from inside the crate: there is no root manifest, and cross mounts
-      # the directory it runs in as the workspace.
-      - name: Build
+      # Built from inside each crate: there is no root manifest, and cross
+      # mounts the directory it runs in as the workspace.
+      - name: Build the agent
         working-directory: agent
         run: ${{ matrix.builder }} build --release --target ${{ matrix.target }}
       # One Linux binary must run everywhere, so a dynamic build is a failure.
-      - name: Verify static linking
+      - name: Verify the agent's static linking
         if: contains(matrix.target, 'musl')
         run: |
           bin=agent/target/${{ matrix.target }}/release/dsh-remote-agent
           file "$bin"
           # musl may be plain static or static-pie; dynamic is the failure.
           file "$bin" | grep -Eq 'statically linked|static-pie linked'
-      # The archive the plugin downloads holds one file, named for the agent:
+      # The archive the plugin downloads holds one file, named for the binary:
       # the asset name belongs to the release, not to what is inside it.
-      - name: Pack the release archive
+      - name: Pack the agent archive
         working-directory: agent/target/${{ matrix.target }}/release
         run: tar -czf "$GITHUB_WORKSPACE/${{ matrix.asset }}.tar.gz" dsh-remote-agent
+      - name: Build the PTC program host
+        working-directory: ptc-host
+        run: ${{ matrix.builder }} build --release --target ${{ matrix.target }}
+      - name: Verify the PTC program host's static linking
+        if: contains(matrix.target, 'musl')
+        run: |
+          bin=ptc-host/target/${{ matrix.target }}/release/dsh-ptc-host
+          file "$bin"
+          file "$bin" | grep -Eq 'statically linked|static-pie linked'
+      - name: Pack the PTC program host archive
+        working-directory: ptc-host/target/${{ matrix.target }}/release
+        run: tar -czf "$GITHUB_WORKSPACE/${{ matrix.host_asset }}.tar.gz" dsh-ptc-host
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset }}.tar.gz
           path: ${{ matrix.asset }}.tar.gz
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.host_asset }}.tar.gz
+          path: ${{ matrix.host_asset }}.tar.gz
           if-no-files-found: error
 
   release:
@@ -99,12 +125,12 @@ jobs:
       - name: Write SHA256SUMS
         run: |
           cd dist
-          sha256sum dsh-remote-agent-*.tar.gz > SHA256SUMS
+          sha256sum dsh-remote-agent-*.tar.gz dsh-ptc-host-*.tar.gz > SHA256SUMS
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            dist/dsh-remote-agent-*.tar.gz dist/SHA256SUMS \
+            dist/dsh-remote-agent-*.tar.gz dist/dsh-ptc-host-*.tar.gz dist/SHA256SUMS \
             --repo lengmoXXL/dsh-remote-workspace \
             --verify-tag --generate-notes

@@ -295,6 +295,9 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   subprocessScope.plugin(LocalSubprocessRuntime)
   subprocessScope.inject(['subprocess'], (scoped) => {
     const router = createRoutingSubprocessRuntime({
+      // A PTC program in a routed workspace runs on the node's own embedded-V8
+      // host, which the connection installs on first need.
+      ptcHost: nodeId => connections.ptcHost(nodeId),
       localProc: scoped.subprocess,
       anchors: () => anchorStore.routes(),
       channel: nodeId => connections.channel(nodeId),

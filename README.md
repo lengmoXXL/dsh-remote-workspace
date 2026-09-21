@@ -16,6 +16,8 @@ English | [中文](README.zh.md)
 
 - Node 22.19+ or 24+, with `ssh` configured as usual.
 - DSH `0.1.6-alpha.2`. Other releases are untested.
+- A registered machine needs no runtime of its own: the agent and, on first `run_code`, the embedded-V8 PTC program host
+  are both installed from this repository's Releases.
 
 ## Install
 
@@ -54,6 +56,8 @@ that account.
   `~/.dsh/remote-agent/` on the machine, and started there. It listens on `127.0.0.1` only, reached through `ssh -L`;
   its token file and this host's node registry are both mode `600`.
 - `node-pty` is a native dependency with a prebuilt binding: Sidebar terminals on this host run through it.
+- The PTC program host is a second binary from the same Release — a V8 engine, so far larger than the agent. It is
+  fetched and uploaded in the background once a machine connects, so the first program run there does not wait on it.
 - Outbound network access is the GitHub Releases download and the `ssh` connections you configure. Nothing else leaves
   the machine.
 
@@ -69,6 +73,10 @@ that account.
   shells — including one a page reload or a closed tab detached — so one can be reattached or ended.
 - Lets the agent work in a terminal that has a tab open. It lists them, reads output, writes text and keys (including
   `ctrl+c`), and waits for output to appear. It does not create or close terminals.
+- Runs PTC programs — `run_code` — in the world their workspace belongs to. A program aimed at a routed workspace runs
+  on that machine, on the embedded-V8 program host this plugin installs beside the agent, which is why the machine needs
+  no Node. Only the declared bindings cross the wire: on a remote machine the program reaches the filesystem and shell
+  through the tools it calls, not through ambient Node APIs.
 
 ## Usage
 

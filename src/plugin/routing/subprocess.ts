@@ -21,8 +21,6 @@
  * @module dsh-remote-workspace/plugin/routing/subprocess
  */
 
-import { createHash } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
 import { basename } from 'node:path'
 import { Duplex, PassThrough } from 'node:stream'
 import type { Writable } from 'node:stream'
@@ -44,6 +42,7 @@ import { asTermId } from '../../remote/protocol.ts'
 import type { ProcId, SpPipeFrame } from '../../remote/protocol.ts'
 import type { ChannelLookup, NodeChannel } from '../../remote/client.ts'
 import type { AnchorRoute } from '../../storage/anchors.ts'
+import type { NodeId } from '../../storage/nodes.ts'
 import { terminalWire } from './tty.ts'
 import { remoteTarget } from './remote.ts'
 import type { TtySpawnRequest } from '../../tty.ts'
@@ -85,6 +84,17 @@ export interface RoutingSubprocessDeps {
   readonly anchors: () => readonly AnchorRoute[]
   /** Resolves the live channel for a node. */
   readonly channel: ChannelLookup
+  /**
+   * Absolute path of the node's own PTC program host, installed there on first
+   * need.
+   *
+   * The harness's PTC provider launches an interpreter in the execution world
+   * and hands it a boot payload; on the host that interpreter is Node. A node
+   * that has no Node runs this plugin's embedded-V8 build instead, which is why
+   * the router has to ask where that build landed before it can rewrite a
+   * spawn.
+   */
+  readonly ptcHost: (nodeId: NodeId) => Promise<string>
   /**
    * Remote binary a packaged ripgrep is rewritten to. The search tools resolve
    * a host-side `rg` and hand that absolute path to this seam, which does not
@@ -191,13 +201,17 @@ function settled(request: Promise<unknown>): Promise<void> {
 
 /**
  * Build the proxy handle for one remote spawn.
+ * @param deps - the routers' owners, for the node's own PTC program host.
  * @param channel - the live node channel.
+ * @param nodeId - the machine serving this spawn.
  * @param remoteCwd - the canonical remote working directory.
  * @param spec - the caller's fully specified spawn request.
  * @returns the handle, valid before the daemon has answered.
  */
 function createRemoteHandle(
+  deps: RoutingSubprocessDeps,
   channel: NodeChannel,
+  nodeId: NodeId,
   remoteCwd: string,
   spec: SubprocessSpawnSpec,
 ): SubprocessHandle {
@@ -309,7 +323,7 @@ function createRemoteHandle(
     let id: ProcId
     try {
       const started = await channel.request('sp.spawn', {
-        argv: await translateRemoteArgv(channel, spec.argv),
+        argv: await translateRemoteArgv(deps, nodeId, channel, spec.argv),
         cwd: remoteCwd,
         stdin: spec.stdio.stdin === 'pipe'
           ? 'pipe'
@@ -414,12 +428,6 @@ function definedEnv(env: NodeJS.ProcessEnv): Record<string, string> {
 /** Directories whose executables every POSIX node already has. */
 const SYSTEM_EXECUTABLE_PREFIXES = ['/bin/', '/sbin/', '/usr/bin/', '/usr/sbin/', '/usr/local/bin/', '/usr/local/sbin/']
 
-/** Host package directories whose assets a remote child may need staged. */
-const HOST_ASSET_SEGMENT = '/node_modules/'
-
-/** Where a staged host asset lands on the node, beside the system temp area. */
-const STAGED_ASSET_ROOT = '/tmp/dsh-remote-assets'
-
 /**
  * Host sandbox runners. The sandbox seam confines by prefixing one of these and
  * a `--` separator, and each exists only on the host that chose it.
@@ -444,21 +452,63 @@ function stripHostSandbox(argv: readonly string[]): readonly string[] {
 }
 
 /**
+ * The PTC provider's bootstrap: the file it spawns, and the package directory
+ * its path runs through.
+ *
+ * The provider hands the seam the interpreter, an optional heap ceiling, its
+ * own bootstrap script, and the frame limit in that order, so an argv of this
+ * shape is a PTC program and nothing else is.
+ */
+const PTC_BOOTSTRAP = 'process.js'
+const PTC_PACKAGE_SEGMENT = '/dsh-ptc-runtime-node/'
+
+/**
+ * The index of the PTC bootstrap in one argv, when that is what this is.
+ * @param argv - the caller's argv, already unwrapped from any host sandbox.
+ * @returns the bootstrap's index, or undefined for every other spawn.
+ */
+function ptcBootstrapIndex(argv: readonly string[]): number | undefined {
+  if (argv.length < 3) return undefined
+  const limit = argv[argv.length - 1]
+  const bootstrap = argv[argv.length - 2]
+  if (limit === undefined || bootstrap === undefined) return undefined
+  if (!/^[1-9][0-9]*$/.test(limit)) return undefined
+  if (!bootstrap.includes(PTC_PACKAGE_SEGMENT)) return undefined
+  if (bootstrap.slice(bootstrap.lastIndexOf('/') + 1) !== PTC_BOOTSTRAP) return undefined
+  return argv.length - 2
+}
+
+/**
  * Rewrite one remote child's argv so every path names something the node has.
  *
- * The subprocess seam resolves executables and host assets in the caller's
- * world, so a spawn carrying another machine's absolute paths arrives naming
- * files only this host has. The node's own resolution stands in for the
- * executable (the host binary would not run there anyway), and a host package
- * asset — the PTC runtime's bootstrap script is the one caller — is copied to
- * the node and its path replaced by the staged copy.
+ * A PTC program is the spawn that needs more than a rename. Its provider
+ * launches an interpreter in the execution world and expects the harness
+ * protocol on the control channel, so the node runs its own embedded-V8 host
+ * in place of the host's Node interpreter and the harness's bootstrap script.
+ * Every other spawn keeps its command and only has a host-resolved executable
+ * swapped for the node's own resolution, because a binary built for this
+ * machine would not run on that one anyway.
+ * @param deps - the seam's owner, for the node's PTC program host.
+ * @param nodeId - the machine serving this spawn.
  * @param channel - the live node channel.
- * @param argv - the caller's argv, already executable-rewritten and wrapped by
- *   this host's sandbox when the session is confined.
+ * @param argv - the caller's argv, wrapped by this host's sandbox when the
+ *   session is confined.
  * @returns the argv to send.
  */
-async function translateRemoteArgv(channel: NodeChannel, argv: readonly string[]): Promise<string[]> {
+async function translateRemoteArgv(
+  deps: RoutingSubprocessDeps,
+  nodeId: NodeId,
+  channel: NodeChannel,
+  argv: readonly string[],
+): Promise<string[]> {
   const translated = [...stripHostSandbox(argv)]
+  const bootstrap = ptcBootstrapIndex(translated)
+  if (bootstrap !== undefined) {
+    // The interpreter and the harness bootstrap after it are host files; what
+    // survives is the heap ceiling the provider configured on the interpreter
+    // and the frame limit the worker reads off its own argv.
+    return [await deps.ptcHost(nodeId), ...translated.slice(1, bootstrap), translated[bootstrap + 1]!]
+  }
   const head = translated[0]
   if (
     head !== undefined
@@ -467,12 +517,6 @@ async function translateRemoteArgv(channel: NodeChannel, argv: readonly string[]
     && await missingOnNode(channel, head)
   ) {
     translated[0] = basename(head)
-  }
-  for (let index = 1; index < translated.length; index += 1) {
-    const value = translated[index]
-    if (value === undefined || !value.startsWith('/') || !value.includes(HOST_ASSET_SEGMENT)) continue
-    if (!await missingOnNode(channel, value)) continue
-    translated[index] = await stageHostAsset(channel, value)
   }
   return translated
 }
@@ -485,23 +529,6 @@ async function missingOnNode(channel: NodeChannel, path: string): Promise<boolea
     // A path the daemon refuses to describe is not one to rewrite blindly.
     return false
   }
-}
-
-/**
- * Copy one host package asset to the node and return the node's path.
- * @param channel - the live node channel.
- * @param hostPath - absolute path in this host's filesystem.
- * @returns the staged path in the node's filesystem.
- * @throws when the asset cannot be read, so the spawn reports the real reason.
- */
-async function stageHostAsset(channel: NodeChannel, hostPath: string): Promise<string> {
-  const bytes = await readFile(hostPath)
-  // The daemon writes text; a binary asset is left for the node to report.
-  if (bytes.includes(0)) return hostPath
-  const digest = createHash('sha1').update(hostPath).digest('hex').slice(0, 16)
-  const staged = `${STAGED_ASSET_ROOT}/${digest}-${basename(hostPath)}`
-  await channel.request('fs.writeText', { path: staged, content: bytes.toString('utf8') })
-  return staged
 }
 
 /**
@@ -552,7 +579,9 @@ export function createRoutingSubprocessRuntime(
       const remote = remoteTarget(spec.cwd, deps.anchors(), deps.channel)
       if (remote === undefined) return deps.localProc.spawn(spec)
       return createRemoteHandle(
+        deps,
         remote.channel,
+        remote.nodeId,
         remote.remotePath,
         { ...spec, argv: rewriteExecutable(spec.argv, remoteRipgrep) },
       )

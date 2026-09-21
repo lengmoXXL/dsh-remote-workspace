@@ -12,6 +12,9 @@ import type { RemoteTerminalHandle } from '../../src/plugin/routing/subprocess.t
 import type { NodeChannel } from '../../src/remote/client.ts'
 import type { AnchorRoute } from '../../src/storage/anchors.ts'
 import { createRoutingSubprocessRuntime } from '../../src/plugin/routing/subprocess.ts'
+
+/** The PTC program host this router is told about; no case here runs a PTC program. */
+const ptcHost = async () => '/home/dev/.dsh/remote-agent/dsh-ptc-host'
 import { asNodeId } from '../../src/storage/nodes.ts'
 
 const anchors: AnchorRoute[] = [
@@ -98,6 +101,7 @@ const unusedLocal = {
 
 function runtime(channel: NodeChannel) {
   return createRoutingSubprocessRuntime({
+    ptcHost,
     localProc: unusedLocal,
     anchors: () => anchors,
     channel: id => (id === 'n1' ? channel : undefined),
@@ -174,6 +178,7 @@ test('terminate ends the output and settles the handle', async () => {
 
 test('a disconnected node is refused before any terminal is allocated', async () => {
   const offline = createRoutingSubprocessRuntime({
+    ptcHost,
     localProc: unusedLocal,
     anchors: () => anchors,
     channel: () => undefined,
@@ -195,6 +200,7 @@ test('a local terminal is delegated untouched', async () => {
     },
   } as unknown as SubprocessRuntime
   const routing = createRoutingSubprocessRuntime({
+    ptcHost,
     localProc: local,
     anchors: () => anchors,
     channel: () => channel,

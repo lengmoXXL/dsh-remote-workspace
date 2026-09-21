@@ -35,6 +35,9 @@ import { connectNode } from '../../src/remote/client.ts'
 import type { ConnectedNode } from '../../src/remote/client.ts'
 import type { AnchorRoute } from '../../src/storage/anchors.ts'
 import { createRoutingSubprocessRuntime } from '../../src/plugin/routing/subprocess.ts'
+
+/** The PTC program host this router is told about; no case here runs a PTC program. */
+const ptcHost = async () => '/home/dev/.dsh/remote-agent/dsh-ptc-host'
 import { asNodeId } from '../../src/storage/nodes.ts'
 import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 
@@ -188,6 +191,7 @@ test('a command the agent spawns sees the interactive login shell PATH entry', a
 
   const anchors: AnchorRoute[] = [{ nodeId: asNodeId('n1'), anchorPath: remoteRoot, remoteRoot }]
   const runtime = createRoutingSubprocessRuntime({
+    ptcHost,
     localProc: localDelegate,
     anchors: () => anchors,
     channel: id => (id === 'n1' ? node.channel : undefined),

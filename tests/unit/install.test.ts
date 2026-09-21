@@ -13,11 +13,13 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { readFile } from 'node:fs/promises'
 import type { SshCommandResult, SshTarget } from '../../src/remote/ssh.ts'
+import type { AgentBinaryOptions } from '../../src/remote/agent/release.ts'
 import type { AgentCommandRunner, AgentProgress } from '../../src/remote/agent/install.ts'
 import {
   AGENT_VERSION,
   LAUNCH_RECIPE_VERSION,
   ensureAgent,
+  ensurePtcHost,
 } from '../../src/remote/agent/install.ts'
 
 const SSH: SshTarget = { target: 'me@build-01' }
@@ -33,6 +35,10 @@ interface Machine {
   installed: string | undefined
   /** The plugin's launch-recipe marker, absent until a start records one. */
   launchEnv: string | undefined
+  /** Whether the PTC program-host binary is present and executable. */
+  ptcHostBinary: boolean
+  /** The PTC program-host marker, absent until an install writes one. */
+  ptcHostMarker: string | undefined
   readonly alive: Set<number>
   /** Runs when the start command is issued, to publish a fresh state. */
   onStart?: () => void
@@ -46,6 +52,8 @@ function machine(): Machine {
     state: undefined,
     installed: undefined,
     launchEnv: undefined,
+    ptcHostBinary: false,
+    ptcHostMarker: undefined,
     alive: new Set(),
   }
 }
@@ -78,7 +86,18 @@ function runnerFor(machine: Machine): AgentCommandRunner {
     if (command === `cat "${DIR}/launch-env.json" 2>/dev/null || true`) {
       return Promise.resolve(ok(machine.launchEnv ?? ''))
     }
+    if (command === `test -x "${DIR}/dsh-ptc-host" && cat "${DIR}/ptc-host.json" 2>/dev/null || true`) {
+      return Promise.resolve(ok(machine.ptcHostBinary ? machine.ptcHostMarker ?? '' : ''))
+    }
     if (command === `mkdir -p "${DIR}"`) return Promise.resolve(ok())
+    if (command.startsWith(`cat > "${DIR}/dsh-ptc-host.new"`)) {
+      machine.ptcHostBinary = true
+      return Promise.resolve(ok())
+    }
+    if (command === `cat > "${DIR}/ptc-host.json"`) {
+      machine.ptcHostMarker = String(options?.input ?? '')
+      return Promise.resolve(ok())
+    }
     if (command.startsWith(`cat > "${DIR}/dsh-remote-agent.new"`)) return Promise.resolve(ok())
     if (command === `cat > "${DIR}/installed.json"`) {
       machine.installed = String(options?.input ?? '')
@@ -108,6 +127,80 @@ function runnerFor(machine: Machine): AgentCommandRunner {
 function uploadIndex(machine: Machine): number {
   return machine.commands.findIndex(command => command.includes('dsh-remote-agent.new'))
 }
+
+/** The index of the PTC program-host upload, or -1. */
+function ptcUploadIndex(machine: Machine): number {
+  return machine.commands.findIndex(command => command.includes('dsh-ptc-host.new'))
+}
+
+test('the PTC program host is installed once and reused afterwards', async () => {
+  const host = machine()
+  const assets: string[] = []
+  const resolveBinary = (options: AgentBinaryOptions): Promise<Buffer> => {
+    assets.push(options.assetName)
+    return Promise.resolve(Buffer.from('the worker bytes'))
+  }
+
+  await ensurePtcHost({
+    ssh: SSH,
+    version: AGENT_VERSION,
+    cacheDir: '/cache',
+    run: runnerFor(host),
+    resolveBinary,
+  })
+
+  assert.deepEqual(assets, ['dsh-ptc-host-linux-x86_64'])
+  assert.equal(host.inputs[ptcUploadIndex(host)]!.toString(), 'the worker bytes')
+  assert.equal(host.ptcHostMarker, JSON.stringify({ version: AGENT_VERSION }))
+
+  await ensurePtcHost({
+    ssh: SSH,
+    version: AGENT_VERSION,
+    cacheDir: '/cache',
+    run: runnerFor(host),
+    resolveBinary,
+  })
+
+  assert.deepEqual(assets, ['dsh-ptc-host-linux-x86_64'], 'a matching marker stops the fetch')
+  assert.equal(
+    host.commands.filter(command => command.includes('dsh-ptc-host.new')).length,
+    1,
+    'and the upload too',
+  )
+})
+
+test('an older PTC program host is replaced', async () => {
+  const host = machine()
+  host.ptcHostBinary = true
+  host.ptcHostMarker = JSON.stringify({ version: '0.0.1' })
+
+  await ensurePtcHost({
+    ssh: SSH,
+    version: AGENT_VERSION,
+    cacheDir: '/cache',
+    run: runnerFor(host),
+    resolveBinary: () => Promise.resolve(Buffer.from('the newer worker')),
+  })
+
+  assert.equal(host.ptcHostMarker, JSON.stringify({ version: AGENT_VERSION }))
+  assert.equal(host.inputs[ptcUploadIndex(host)]!.toString(), 'the newer worker')
+})
+
+test('an executable with no marker is reinstalled', async () => {
+  const host = machine()
+  host.ptcHostBinary = true
+
+  await ensurePtcHost({
+    ssh: SSH,
+    version: AGENT_VERSION,
+    cacheDir: '/cache',
+    run: runnerFor(host),
+    resolveBinary: () => Promise.resolve(Buffer.from('the worker bytes')),
+  })
+
+  assert.equal(host.ptcHostMarker, JSON.stringify({ version: AGENT_VERSION }))
+  assert.equal(ptcUploadIndex(host) >= 0, true)
+})
 
 test('an agent already on the expected build is reused untouched', async () => {
   const host = machine()
@@ -460,10 +553,13 @@ test('a setup command that fails reports the shared ssh diagnostic', async () =>
   )
 })
 
-test('the crate version matches the agent build the plugin installs', async () => {
-  // Read the manifest rather than trusting a build step to have copied it.
-  const manifest = await readFile(new URL('../../agent/Cargo.toml', import.meta.url), 'utf8')
-  const match = /^version = "(.+)"$/m.exec(manifest)
-  assert.notEqual(match, null)
-  assert.equal(match?.[1], AGENT_VERSION)
+test('the crate versions match the build the plugin installs', async () => {
+  // Read the manifests rather than trusting a build step to have copied them:
+  // one release tag carries both binaries, so both versions move with it.
+  for (const crate of ['agent', 'ptc-host']) {
+    const manifest = await readFile(new URL(`../../${crate}/Cargo.toml`, import.meta.url), 'utf8')
+    const match = /^version = "(.+)"$/m.exec(manifest)
+    assert.notEqual(match, null, `${crate}/Cargo.toml has a version`)
+    assert.equal(match?.[1], AGENT_VERSION, `${crate} is the build the plugin installs`)
+  }
 })

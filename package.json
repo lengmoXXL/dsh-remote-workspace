@@ -1,6 +1,6 @@
 {
   "name": "@lengmoxxl/dsh-remote-workspace",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "description": "DeepSeek Harness plugin for working on other machines: manage machines over SSH, work in their repositories and worktrees, and open a terminal there.",
   "type": "module",
   "main": "lib/index.js",
@@ -102,7 +102,8 @@
     "pretest": "npm run build",
     "test": "node --test --experimental-strip-types tests/unit/*.test.ts tests/e2e/*.test.ts",
     "test:browser": "npm run build && node --test --experimental-strip-types tests/browser/workflow.test.ts",
-    "build:agent": "cargo build --release --manifest-path agent/Cargo.toml"
+    "build:agent": "cargo build --release --manifest-path agent/Cargo.toml",
+    "build:ptc-host": "cargo build --release --manifest-path ptc-host/Cargo.toml"
   },
   "dependencies": {
     "@deepseek-ai/dsh-atomic-write": "^0.1.6-alpha.2",

@@ -12,6 +12,7 @@
 
 import type { AnchorRoute } from '../../storage/anchors.ts'
 import type { ChannelLookup, NodeChannel } from '../../remote/client.ts'
+import type { NodeId } from '../../storage/nodes.ts'
 import { ambiguousPathMessage, classifyPath } from '../../models/routing.ts'
 
 /** A reachable machine and the path this host asked it about. */
@@ -20,6 +21,8 @@ export interface RemoteTarget {
   readonly channel: NodeChannel
   /** The absolute path on that machine the caller's cwd maps to. */
   readonly remotePath: string
+  /** The machine itself, for facts the channel does not carry. */
+  readonly nodeId: NodeId
 }
 
 /**
@@ -40,5 +43,5 @@ export function remoteTarget(
   if (route.kind === 'ambiguous') throw new Error(ambiguousPathMessage(route))
   const live = channel(route.nodeId)
   if (live === undefined) throw new Error(`remote node "${route.nodeId}" is not connected`)
-  return { channel: live, remotePath: route.remotePath }
+  return { channel: live, remotePath: route.remotePath, nodeId: route.nodeId }
 }

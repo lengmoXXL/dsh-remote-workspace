@@ -15,9 +15,11 @@ import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import type { AgentFetcher } from '../../src/remote/agent/release.ts'
 import {
+  PTC_HOST_MEMBER,
   agentArchiveUrl,
   agentAssetName,
   agentSumsUrl,
+  ptcHostAssetName,
   resolveAgentBinary,
 } from '../../src/remote/agent/release.ts'
 
@@ -81,8 +83,8 @@ function tarball(entries: readonly { name: string; body: Buffer; type?: string }
 }
 
 /** The archive a release of this repository publishes for the fixture asset. */
-function releaseArchive(): Buffer {
-  return tarball([{ name: 'dsh-remote-agent', body: BINARY }])
+function releaseArchive(member = 'dsh-remote-agent', body = BINARY): Buffer {
+  return tarball([{ name: member, body }])
 }
 
 /**
@@ -113,6 +115,38 @@ test('each reported platform maps to its release asset', () => {
   assert.equal(agentAssetName('Darwin', 'aarch64'), 'dsh-remote-agent-darwin-aarch64')
   assert.equal(agentAssetName('darwin', 'arm64'), 'dsh-remote-agent-darwin-aarch64')
   assert.equal(agentAssetName(' Linux ', ' AMD64 '), 'dsh-remote-agent-linux-x86_64')
+  assert.equal(ptcHostAssetName('Linux', 'x86_64'), 'dsh-ptc-host-linux-x86_64')
+  assert.equal(ptcHostAssetName('Darwin', 'arm64'), 'dsh-ptc-host-darwin-aarch64')
+})
+
+test('the PTC program host is fetched as its own asset and member', async () => {
+  const worker = Buffer.from('the worker bytes')
+  const archive = releaseArchive(PTC_HOST_MEMBER, worker)
+  const digest = archiveDigest(archive)
+  const asset = ptcHostAssetName('Linux', 'x86_64')
+  const scripted = scriptedFetch({
+    [agentArchiveUrl(VERSION, asset)]: archive,
+    [agentSumsUrl(VERSION)]: sumsFor(`${asset}.tar.gz`, digest),
+  })
+  const dir = await cacheDir()
+
+  try {
+    const binary = await resolveAgentBinary({
+      version: VERSION,
+      assetName: asset,
+      member: PTC_HOST_MEMBER,
+      cacheDir: dir,
+      fetch: scripted.fetch,
+    })
+    assert.deepEqual(binary, worker)
+    assert.deepEqual(await readFile(join(dir, VERSION, asset)), worker)
+    assert.deepEqual(scripted.seen.map(request => request.url), [
+      agentArchiveUrl(VERSION, asset),
+      agentSumsUrl(VERSION),
+    ])
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
 })
 
 test('a platform with no release fails naming what the machine reported', () => {

@@ -20,6 +20,9 @@ import { connectNode } from '../../src/remote/client.ts'
 import type { ConnectedNode } from '../../src/remote/client.ts'
 import type { AnchorRoute } from '../../src/storage/anchors.ts'
 import { createRoutingSubprocessRuntime } from '../../src/plugin/routing/subprocess.ts'
+
+/** The PTC program host this router is told about; no case here runs a PTC program. */
+const ptcHost = async () => '/home/dev/.dsh/remote-agent/dsh-ptc-host'
 import { asNodeId } from '../../src/storage/nodes.ts'
 
 const TOKEN = 'control-token-0123456789'
@@ -73,6 +76,7 @@ before(async () => {
 
   const anchors: AnchorRoute[] = [{ nodeId: asNodeId('n1'), anchorPath: anchorRoot, remoteRoot }]
   runtime = createRoutingSubprocessRuntime({
+    ptcHost,
     localProc: new Proxy({}, {
       get: () => () => {
         throw new Error('the local subprocess delegate was reached')

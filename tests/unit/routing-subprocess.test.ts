@@ -7,7 +7,6 @@
  */
 
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import type { SubprocessHandle, SubprocessRuntime, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
@@ -16,6 +15,17 @@ import type { NodeChannel } from '../../src/remote/client.ts'
 import { NodeRequestError } from '../../src/remote/client.ts'
 import type { AnchorRoute } from '../../src/storage/anchors.ts'
 import { createRoutingSubprocessRuntime } from '../../src/plugin/routing/subprocess.ts'
+
+/** The PTC program host this router is told about, as the connection would answer. */
+const ptcHost = async () => '/home/dev/.dsh/remote-agent/dsh-ptc-host'
+
+/** The argv the harness's PTC provider hands the subprocess seam. */
+const PTC_BOOTSTRAP_ARGV = [
+  '/Applications/DeepSeek Harness.app/Contents/Resources/node',
+  '--max-old-space-size=512',
+  '/Applications/DeepSeek Harness.app/Contents/Resources/app.asar/node_modules/@deepseek-ai/dsh-ptc-runtime-node/lib/process.js',
+  '134217728',
+]
 import { asNodeId } from '../../src/storage/nodes.ts'
 import type { ProcId } from '../../src/remote/protocol.ts'
 
@@ -113,6 +123,7 @@ const unusedLocal = {
 
 function runtime(channel: NodeChannel) {
   return createRoutingSubprocessRuntime({
+    ptcHost,
     localProc: unusedLocal,
     anchors: () => anchors,
     channel: id => (id === 'n1' ? channel : undefined),
@@ -226,6 +237,7 @@ test('terminate before the daemon answers still terminates', async () => {
 
 test('an offline node is refused before any process is created', () => {
   const offline = createRoutingSubprocessRuntime({
+    ptcHost,
     localProc: unusedLocal,
     anchors: () => anchors,
     channel: () => undefined,
@@ -237,6 +249,7 @@ test('an ambiguous remote cwd is refused, never guessed', () => {
   const twoNodes: AnchorRoute[] = [...anchors, { ...anchors[0]!, nodeId: asNodeId('n2') }]
   const { channel } = fakeDaemon({})
   const routing = createRoutingSubprocessRuntime({
+    ptcHost,
     localProc: unusedLocal,
     anchors: () => twoNodes,
     channel: () => channel,
@@ -247,6 +260,7 @@ test('an ambiguous remote cwd is refused, never guessed', () => {
 test('a host-resolved ripgrep path is rewritten for the node', async () => {
   const { channel, calls } = fakeDaemon({ stdout: [] })
   const routing = createRoutingSubprocessRuntime({
+    ptcHost,
     localProc: unusedLocal,
     anchors: () => anchors,
     channel: () => channel,
@@ -263,6 +277,7 @@ test('a host-resolved ripgrep path is rewritten for the node', async () => {
 test('a non-ripgrep absolute path is passed through for the node to judge', async () => {
   const { channel, calls } = fakeDaemon({ stdout: [] })
   const routing = createRoutingSubprocessRuntime({
+    ptcHost,
     localProc: unusedLocal,
     anchors: () => anchors,
     channel: () => channel,
@@ -279,6 +294,7 @@ test('a host-only executable collapses to the node-resolved bare name', async ()
     missingOnNode: path => path === '/opt/host-only/node',
   })
   const routing = createRoutingSubprocessRuntime({
+    ptcHost,
     localProc: unusedLocal,
     anchors: () => anchors,
     channel: () => channel,
@@ -290,31 +306,54 @@ test('a host-only executable collapses to the node-resolved bare name', async ()
   assert.deepEqual(spawn.argv, ['node', '--version'])
 })
 
-test('a host package asset is staged onto the node and its path rewritten', async () => {
-  const asset = join(process.cwd(), 'node_modules', '@deepseek-ai', 'dsh-subprocess', 'package.json')
-  const content = await readFile(asset, 'utf8')
-  const { channel, calls } = fakeDaemon({ stdout: [], missingOnNode: path => path === asset })
+test("a PTC bootstrap runs on the node's own program host", async () => {
+  const { channel, calls } = fakeDaemon({ stdout: [] })
   const routing = createRoutingSubprocessRuntime({
+    ptcHost,
     localProc: unusedLocal,
     anchors: () => anchors,
     channel: () => channel,
   })
-  const handle = routing.spawn({ ...spec('/srv/app/login'), argv: ['/usr/bin/node', asset] })
+  const handle = routing.spawn({
+    ...spec('/srv/app/login', { control: 'pipe' }),
+    argv: [...PTC_BOOTSTRAP_ARGV],
+  })
   await handle.done
 
   const spawn = calls.find(call => call.method === 'sp.spawn')?.params as { argv: readonly string[] }
-  const staged = spawn.argv[1]!
-  assert.equal(spawn.argv[0], '/usr/bin/node', 'a system executable is left for the node to judge')
-  assert.match(staged, /^\/tmp\/dsh-remote-assets\/[0-9a-f]{16}-package\.json$/)
+  // The interpreter and the harness bootstrap are host files; what reaches the
+  // node is its own worker, the configured heap ceiling, and the frame limit.
+  assert.deepEqual(spawn.argv, [
+    '/home/dev/.dsh/remote-agent/dsh-ptc-host',
+    '--max-old-space-size=512',
+    '134217728',
+  ])
+  assert.equal(calls.some(call => call.method === 'fs.stat'), false, 'no host path is probed')
+  assert.equal(calls.some(call => call.method === 'fs.writeText'), false, 'nothing is copied over')
+})
 
-  const write = calls.find(call => call.method === 'fs.writeText')?.params as { path: string; content: string }
-  assert.equal(write.path, staged)
-  assert.equal(write.content, content)
+test('a bootstrap from anywhere else is left for the node to judge', async () => {
+  const { channel, calls } = fakeDaemon({ stdout: [] })
+  const routing = createRoutingSubprocessRuntime({
+    ptcHost,
+    localProc: unusedLocal,
+    anchors: () => anchors,
+    channel: () => channel,
+  })
+  const handle = routing.spawn({
+    ...spec('/srv/app/login', { control: 'pipe' }),
+    argv: ['/usr/bin/node', '/opt/elsewhere/process.js', '134217728'],
+  })
+  await handle.done
+
+  const spawn = calls.find(call => call.method === 'sp.spawn')?.params as { argv: readonly string[] }
+  assert.deepEqual(spawn.argv, ['/usr/bin/node', '/opt/elsewhere/process.js', '134217728'])
 })
 
 test('a host sandbox wrapper is removed before the command reaches the node', async () => {
   const { channel, calls } = fakeDaemon({ stdout: [] })
   const routing = createRoutingSubprocessRuntime({
+    ptcHost,
     localProc: unusedLocal,
     anchors: () => anchors,
     channel: () => channel,
@@ -332,6 +371,7 @@ test('a host sandbox wrapper is removed before the command reaches the node', as
 test('an ordinary command containing a -- separator is left alone', async () => {
   const { channel, calls } = fakeDaemon({ stdout: [] })
   const routing = createRoutingSubprocessRuntime({
+    ptcHost,
     localProc: unusedLocal,
     anchors: () => anchors,
     channel: () => channel,
@@ -347,6 +387,7 @@ test('a host asset the node already has is left alone', async () => {
   const asset = join(process.cwd(), 'node_modules', '@deepseek-ai', 'dsh-subprocess', 'package.json')
   const { channel, calls } = fakeDaemon({ stdout: [] })
   const routing = createRoutingSubprocessRuntime({
+    ptcHost,
     localProc: unusedLocal,
     anchors: () => anchors,
     channel: () => channel,
@@ -371,6 +412,7 @@ test('the local branch is delegated untouched', () => {
     spawnTerminal: () => Promise.reject(new Error('unused')),
   } as unknown as SubprocessRuntime
   const routing = createRoutingSubprocessRuntime({
+    ptcHost,
     localProc: local,
     anchors: () => anchors,
     channel: () => channel,
