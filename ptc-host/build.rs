@@ -10,6 +10,6 @@ fn main() {
     // satisfied by asking for it: without this, one release target fails to
     // link, and only once a release is already tagged.
     if target == "aarch64-unknown-linux-musl" {
-        println!("cargo:rustc-link-lib=gcc");
+        println!("cargo:rustc-link-arg-bins=-lgcc");
     }
 }
