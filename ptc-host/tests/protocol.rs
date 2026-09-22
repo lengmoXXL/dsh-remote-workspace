@@ -26,6 +26,9 @@ const MAX_FRAME: usize = 8 * 1024 * 1024;
 /// How long a test waits for the next frame before failing.
 const READ_TIMEOUT_MS: libc::c_int = 20_000;
 
+/// The descriptor the protocol fixes the control channel on.
+const CONTROL_FD: libc::c_int = 7;
+
 /// A spawned worker and the host end of its control channel.
 struct Worker {
     child: Child,
@@ -45,12 +48,26 @@ impl Worker {
             .arg(MAX_FRAME.to_string())
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::piped());
-        // SAFETY: dup2 is async-signal-safe and the descriptor is this
-        // process's own socket end.
+            // Inherited rather than captured: a worker that dies before its
+            // first frame explains itself here, and libtest prints it.
+            .stderr(Stdio::inherit());
+        // SAFETY: dup2 and fcntl are async-signal-safe, and the descriptor is
+        // this process's own socket end.
         unsafe {
             command.pre_exec(move || {
-                if libc::dup2(child_fd, 7) == -1 {
+                if libc::dup2(child_fd, CONTROL_FD) == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                // dup2 clears close-on-exec on the new descriptor -- unless it
+                // already was that descriptor, where it is a no-op that leaves
+                // the flag which would close fd 7 at exec still set. Under a
+                // test harness the socketpair lands on fd 7 often enough that
+                // this is the difference between a real channel and none.
+                let flags = libc::fcntl(CONTROL_FD, libc::F_GETFD);
+                if flags == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                if libc::fcntl(CONTROL_FD, libc::F_SETFD, flags & !libc::FD_CLOEXEC) == -1 {
                     return Err(std::io::Error::last_os_error());
                 }
                 Ok(())
