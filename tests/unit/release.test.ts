@@ -112,11 +112,10 @@ function scriptedFetch(bodies: Readonly<Record<string, Buffer | undefined>>): {
 test('each reported platform maps to its release asset', () => {
   assert.equal(agentAssetName('Linux', 'x86_64'), 'dsh-remote-agent-linux-x86_64')
   assert.equal(agentAssetName('linux', 'amd64'), 'dsh-remote-agent-linux-x86_64')
-  assert.equal(agentAssetName('Darwin', 'aarch64'), 'dsh-remote-agent-darwin-aarch64')
-  assert.equal(agentAssetName('darwin', 'arm64'), 'dsh-remote-agent-darwin-aarch64')
   assert.equal(agentAssetName(' Linux ', ' AMD64 '), 'dsh-remote-agent-linux-x86_64')
+  assert.equal(agentAssetName('Darwin', 'x86_64'), 'dsh-remote-agent-darwin-x86_64')
   assert.equal(ptcHostAssetName('Linux', 'x86_64'), 'dsh-ptc-host-linux-x86_64')
-  assert.equal(ptcHostAssetName('Darwin', 'arm64'), 'dsh-ptc-host-darwin-aarch64')
+  assert.equal(ptcHostAssetName('Darwin', 'amd64'), 'dsh-ptc-host-darwin-x86_64')
 })
 
 test('the PTC program host is fetched as its own asset and member', async () => {
@@ -152,6 +151,10 @@ test('the PTC program host is fetched as its own asset and member', async () => 
 test('a platform with no release fails naming what the machine reported', () => {
   assert.throws(() => agentAssetName('FreeBSD', 'x86_64'), /FreeBSD/)
   assert.throws(() => agentAssetName('Linux', 'riscv64'), /riscv64/)
+  // This release is x86_64 only, so an ARM machine is refused by name rather
+  // than pointed at an asset no release carries.
+  assert.throws(() => agentAssetName('Darwin', 'arm64'), /arm64/)
+  assert.throws(() => agentAssetName('Linux', 'aarch64'), /aarch64/)
 })
 
 test('a version and asset build the release download address, not an API call', () => {

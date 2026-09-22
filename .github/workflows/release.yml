@@ -36,25 +36,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # x86_64 only, and deliberately: the Linux build is musl-static, the
+        # macOS build is the runner's own toolchain, and no other architecture
+        # is served or asked for.
         include:
           - target: x86_64-unknown-linux-musl
             asset: dsh-remote-agent-linux-x86_64
             host_asset: dsh-ptc-host-linux-x86_64
             os: ubuntu-latest
             builder: cross
-          - target: aarch64-unknown-linux-musl
-            asset: dsh-remote-agent-linux-aarch64
-            host_asset: dsh-ptc-host-linux-aarch64
-            os: ubuntu-latest
-            builder: cross
           - target: x86_64-apple-darwin
             asset: dsh-remote-agent-darwin-x86_64
             host_asset: dsh-ptc-host-darwin-x86_64
-            os: macos-latest
-            builder: cargo
-          - target: aarch64-apple-darwin
-            asset: dsh-remote-agent-darwin-aarch64
-            host_asset: dsh-ptc-host-darwin-aarch64
             os: macos-latest
             builder: cargo
     runs-on: ${{ matrix.os }}

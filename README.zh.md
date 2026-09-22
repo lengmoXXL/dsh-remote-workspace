@@ -15,7 +15,8 @@
 
 - Node 22.19+ 或 24+，以及按平时方式配好的 `ssh`。
 - DSH `0.1.6-alpha.2`。其他版本未测试。
-- 被登记的机器不需要任何运行时：agent 与内嵌 V8 的 PTC program host 都从本仓库的 Releases 安装。
+- 被登记的机器不需要任何运行时，目前只服务 Linux 与 macOS 的 x86_64：agent 与那台机器上 `run_code` 使用的、内嵌 V8 的
+  PTC program host，都从本仓库的 Releases 安装。
 
 ## 安装
 

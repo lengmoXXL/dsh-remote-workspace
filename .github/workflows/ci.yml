@@ -83,7 +83,6 @@ jobs:
       # download from the host's.
       - if: runner.os == 'Linux'
         run: |
-          rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
+          rustup target add x86_64-unknown-linux-musl
           cargo check --manifest-path agent/Cargo.toml --target x86_64-unknown-linux-musl --all-targets
-          cargo check --manifest-path agent/Cargo.toml --target aarch64-unknown-linux-musl --all-targets
           cargo check --manifest-path ptc-host/Cargo.toml --target x86_64-unknown-linux-musl

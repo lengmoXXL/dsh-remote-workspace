@@ -56,12 +56,15 @@ const PLATFORMS: Readonly<Record<string, string>> = {
   darwin: 'darwin',
 }
 
-/** Architecture names `uname -m` reports, and the asset token each maps to. */
+/**
+ * Architecture names `uname -m` reports, and the asset token each maps to.
+ *
+ * x86_64 only: the release carries no other build, so a machine this plugin
+ * cannot serve is refused by name before anything is downloaded.
+ */
 const ARCHITECTURES: Readonly<Record<string, string>> = {
   x86_64: 'x86_64',
   amd64: 'x86_64',
-  aarch64: 'aarch64',
-  arm64: 'aarch64',
 }
 
 /** Downloads one URL; injectable so tests need no network. */
@@ -132,7 +135,7 @@ function binaryAssetName(binary: string, platform: string, arch: string): string
   if (os === undefined || cpu === undefined) {
     throw new Error(
       `the machine reports platform "${platform.trim()}" and architecture "${arch.trim()}", `
-      + `which has no ${binary} release; it ships for Linux and Darwin on x86_64 and aarch64`,
+      + `which has no ${binary} release; it ships for Linux and Darwin on x86_64`,
     )
   }
   return `${binary}-${os}-${cpu}`

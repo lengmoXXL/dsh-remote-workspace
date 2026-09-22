@@ -16,8 +16,8 @@ English | [中文](README.zh.md)
 
 - Node 22.19+ or 24+, with `ssh` configured as usual.
 - DSH `0.1.6-alpha.2`. Other releases are untested.
-- A registered machine needs no runtime of its own: the agent and, on first `run_code`, the embedded-V8 PTC program host
-  are both installed from this repository's Releases.
+- A registered machine needs no runtime of its own, and is served on Linux or macOS on x86_64: the agent, and the
+  embedded-V8 PTC program host that machine's `run_code` runs on, both come from this repository's Releases.
 
 ## Install
 
