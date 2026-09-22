@@ -37,6 +37,21 @@
   line-height: 1.5;
   word-break: break-word;
 }
+/* A machine's own failures, in a band of their own rather than in the state
+   pill: a pill carries a word, and a sentence that pushed it out of shape was
+   the one thing a person could not read. */
+.nodeAlert {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+.nodeAlertBody { display: flex; flex-direction: column; gap: 2px; }
 .empty {
   padding: 18px 14px;
   color: var(--dsw-alias-label-caption);

@@ -90,6 +90,11 @@ interface NodeStatus {
   readonly progress?: AgentProgress
   /** Why the machine is not reachable, when the host reported a reason. */
   readonly error?: string
+  /** This machine's own PTC program host, while it is installing or failed. */
+  readonly worker?: {
+    readonly state: 'installing' | 'failed'
+    readonly error?: string
+  }
 }
 
 /**
@@ -555,10 +560,22 @@ export function RemoteWorktreesSection(props: SectionProps) {
             // This host has no destination, no tunnel, no token, and no
             // connection to make or break: it is where the harness already is.
             const here = node.transport.kind === 'local'
-            // What the state pill says in words: what went wrong, or the state —
-            // this host reads as always being available. The step in flight has
-            // its own line under the header.
-            const note = status?.error ?? t(here ? 'status.local' : badge.key)
+            // The pill is a state and nothing else: this host reads as always
+            // being available, and a machine that is not says which state it is
+            // in. A failure is a sentence, so it takes the band below instead of
+            // pushing the pill out of shape.
+            const note = t(here ? 'status.local' : badge.key)
+            // Everything this machine has to report that is not a state: the
+            // connection's own failure, and the PTC program host the harness
+            // installs in the background long after the connection came up.
+            const worker = status?.worker
+            const failures = [
+              ...status?.error === undefined ? [] : [status.error],
+              ...worker?.state === 'failed'
+                ? [t('worker.failed', { error: worker.error ?? '' })]
+                : [],
+            ]
+            const workerStep = worker?.state === 'installing' ? t('worker.installing') : undefined
             // Where the machine is and, once a forward is up, where it answers.
             const where = node.transport.kind === 'ssh'
               ? node.transport.target
@@ -588,7 +605,9 @@ export function RemoteWorktreesSection(props: SectionProps) {
                           <span>{note}</span>
                         </span>
                       </span>
-                      <span className={css.machineMeta}>{reach}</span>
+                      <span className={css.machineMeta}>
+                        {workerStep === undefined ? reach : `${reach} · ${workerStep}`}
+                      </span>
                     </span>
                   </button>
                   <span className={css.actions}>
@@ -655,6 +674,14 @@ export function RemoteWorktreesSection(props: SectionProps) {
                     <div className={css.track}>
                       <i className={css.trackFill} style={{ width: `${step.percent}%` }} />
                     </div>
+                  </div>
+                )}
+                {failures.length === 0 ? null : (
+                  <div className={css.nodeAlert} role="alert">
+                    <IconWarningOutline16 />
+                    <span className={css.nodeAlertBody}>
+                      {failures.map(failure => <span key={failure}>{failure}</span>)}
+                    </span>
                   </div>
                 )}
                 {machineOpen ? (

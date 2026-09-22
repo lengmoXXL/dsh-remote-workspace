@@ -44,6 +44,23 @@ export interface NodeStatus {
   readonly progress?: AgentProgress
   /** The failure message after a failed attempt or a dropped transport. */
   readonly error?: string
+  /**
+   * This machine's own PTC program host, while it is being installed or after
+   * an install failed. Absent once the machine has it.
+   *
+   * The install runs in the background long after the connection is up, so a
+   * failure has no call of its own to reject: it would otherwise be invisible
+   * until the first `run_code` aimed at this machine, and then only as a hang.
+   */
+  readonly worker?: WorkerStatus
+}
+
+/** The state of one machine's PTC program host, as a surface may render it. */
+export interface WorkerStatus {
+  /** Whether the host is being installed, or the install failed. */
+  readonly state: 'installing' | 'failed'
+  /** Why the install failed. Present only in the `failed` state. */
+  readonly error?: string
 }
 
 /**
@@ -272,6 +289,8 @@ interface Entry {
   record: NodeRecord | undefined
   /** The install of this machine's PTC program host, once one has begun. */
   ptcHost: Promise<string> | undefined
+  /** What that install is doing, for a surface that reports it. */
+  worker: WorkerStatus | undefined
 }
 
 /** Where a machine's native PTC program host sits, relative to its home directory. */
@@ -322,6 +341,7 @@ export function createNodeConnections(deps: NodeConnectionsDeps = {}): NodeConne
       published: undefined,
       record: undefined,
       ptcHost: undefined,
+      worker: undefined,
     }
     entries.set(nodeId, created)
     return created
@@ -332,6 +352,7 @@ export function createNodeConnections(deps: NodeConnectionsDeps = {}): NodeConne
     entry.published = undefined
     entry.record = undefined
     entry.ptcHost = undefined
+    entry.worker = undefined
     entry.live?.close()
     entry.live = undefined
     entry.pending = undefined
@@ -359,6 +380,7 @@ export function createNodeConnections(deps: NodeConnectionsDeps = {}): NodeConne
     ...entry.localPort === undefined ? {} : { localPort: entry.localPort },
     ...entry.progress === undefined ? {} : { progress: entry.progress },
     ...entry.error === undefined ? {} : { error: entry.error },
+    ...entry.worker === undefined ? {} : { worker: entry.worker },
   })
 
   /**
@@ -385,14 +407,26 @@ export function createNodeConnections(deps: NodeConnectionsDeps = {}): NodeConne
     if (cacheDir === undefined) {
       return Promise.reject(new Error('installing a PTC program host needs the plugin data directory'))
     }
+    entry.worker = { state: 'installing' }
     const attempt = installPtcHost({ ssh: record.transport, version: agentVersion, cacheDir })
       .then(() => path)
     entry.ptcHost = attempt
-    // A failed install must not become this machine's answer for good: the next
-    // program is allowed to try again.
-    void attempt.catch(() => {
-      if (entry.ptcHost === attempt) entry.ptcHost = undefined
-    })
+    void attempt.then(
+      () => {
+        if (entry.ptcHost === attempt) entry.worker = undefined
+      },
+      (error: unknown) => {
+        // A failed install must not become this machine's answer for good: the
+        // next program is allowed to try again. What it must become is visible,
+        // which is the whole reason the state is on the entry at all.
+        if (entry.ptcHost !== attempt) return
+        entry.ptcHost = undefined
+        entry.worker = {
+          state: 'failed',
+          error: error instanceof Error ? error.message : String(error),
+        }
+      },
+    )
     return attempt
   }
 

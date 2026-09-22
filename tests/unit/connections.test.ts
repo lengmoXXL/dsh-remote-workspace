@@ -385,3 +385,42 @@ test('an ssh record without a cache directory is refused before any process star
     /needs the plugin data directory to cache the agent/,
   )
 })
+
+/** A manager whose PTC program host install behaves as the case needs. */
+function withWorkerInstall(ensurePtcHost: () => Promise<void>) {
+  return createNodeConnections({
+    cacheDir: '/cache',
+    ensurePtcHost,
+    openTransport: () => Promise.resolve({ host: '127.0.0.1', port: 1, close: () => {} }),
+    connect: () => Promise.resolve(stubNode()),
+  })
+}
+
+test('an install in flight is reported as installing', async () => {
+  let release: () => void = () => {}
+  const gate = new Promise<void>(resolve => { release = resolve })
+  const connections = withWorkerInstall(() => gate)
+
+  await connections.connect(sshRecord())
+
+  assert.deepEqual(connections.status(asNodeId('n1')).worker, { state: 'installing' })
+  release()
+  await connections.ptcHost(asNodeId('n1'))
+  assert.equal(connections.status(asNodeId('n1')).worker, undefined)
+})
+
+test('a PTC program host that cannot be installed is reported on the machine', async () => {
+  const connections = withWorkerInstall(() => Promise.reject(new Error('the archive could not be fetched')))
+
+  await connections.connect(sshRecord())
+
+  await assert.rejects(() => connections.ptcHost(asNodeId('n1')), /could not be fetched/)
+  // The background install has no call of its own to reject, so this status is
+  // the only place its failure can be seen before a program is run on it.
+  assert.deepEqual(connections.status(asNodeId('n1')).worker, {
+    state: 'failed',
+    error: 'the archive could not be fetched',
+  })
+  assert.equal(connections.status(asNodeId('n1')).state, 'ready')
+})
+
