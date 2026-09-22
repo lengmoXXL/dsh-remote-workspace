@@ -1,17 +1,19 @@
 /**
- * Resolve the agent binary for one machine's platform.
+ * Resolve one of this release's binaries for one machine's platform.
  *
- * The agent is a static Rust binary published on GitHub Releases inside a
- * per-platform `.tar.gz`, so "install the agent" reduces to naming the right
- * archive for `uname` and caching the binary it holds. The cache is keyed by
- * version and asset, which is what makes a version bump a fresh download and a
- * second machine of the same platform a cache hit.
+ * The agent and the native PTC program host are static Rust binaries published
+ * on GitHub Releases, each inside its own per-platform `.tar.gz`, so
+ * "install one" reduces to naming the right archive for `uname` and caching
+ * the binary it holds. The cache is keyed by version and asset, which is what
+ * makes a version bump a fresh download and a second machine of the same
+ * platform a cache hit.
  *
  * The archive is read from the release's own download address — the URL a
  * browser would follow, built from the tag and the asset name — so nothing here
  * calls the GitHub API: no release metadata, no asset listing, no media type to
- * negotiate, and no anonymous rate limit to spend. A release that carries no
- * such archive answers 404 and is reported with the address that failed.
+ * negotiate, and no anonymous rate limit to spend. That address is not
+ * reachable from every network this plugin runs on, so a public mirror is tried
+ * after it; the bytes are verified either way.
  *
  * Every download is verified against the release's `SHA256SUMS` before it is
  * unpacked and cached: the bytes are executed on a remote machine, so a
@@ -40,7 +42,8 @@ const AGENT_MEMBER = 'dsh-remote-agent'
  *
  * A node that has no Node runtime runs this in place of the interpreter the
  * harness's PTC provider would otherwise spawn there, so it ships as its own
- * archive and is fetched only by machines that actually run a program.
+ * archive: a JavaScript engine is a large thing to hand every machine, and this
+ * one is fetched after a connection is up rather than before the agent starts.
  */
 export const PTC_HOST_MEMBER = 'dsh-ptc-host'
 
@@ -183,11 +186,6 @@ const DOWNLOAD_MIRRORS: readonly string[] = [
   'https://ghproxy.net/',
 ]
 
-/** Every address one release file is tried at, in order. */
-function downloadAddresses(url: string): readonly string[] {
-  return [url, ...DOWNLOAD_MIRRORS.map(mirror => `${mirror}${url}`)]
-}
-
 /**
  * Download one release file, at its own address first and a mirror after it.
  *
@@ -200,7 +198,7 @@ function downloadAddresses(url: string): readonly string[] {
  * @throws when every address failed.
  */
 async function download(fetcher: AgentFetcher, url: string): Promise<Buffer> {
-  const addresses = downloadAddresses(url)
+  const addresses = [url, ...DOWNLOAD_MIRRORS.map(mirror => `${mirror}${url}`)]
   let last: unknown
   for (const address of addresses) {
     try {
@@ -337,7 +335,7 @@ function expectedChecksum(sums: string, fileName: string, sumsUrl: string): stri
 }
 
 /**
- * Fetch, verify, unpack, and cache one agent binary.
+ * Fetch, verify, unpack, and cache one release binary.
  *
  * A cached file is returned untouched: it was verified when it was written,
  * and re-hashing every connect would spend a slow link's budget on a file the
@@ -345,7 +343,7 @@ function expectedChecksum(sums: string, fileName: string, sumsUrl: string): stri
  * @param options - version, asset, cache directory, and an optional fetch.
  * @returns the verified binary bytes.
  * @throws when the archive cannot be read, fails its checksum, carries no
- *   agent, or the cache cannot be written.
+ *   such member, or the cache cannot be written.
  */
 export async function resolveAgentBinary(options: AgentBinaryOptions): Promise<Buffer> {
   const fetcher = options.fetch ?? fetchOverHttps

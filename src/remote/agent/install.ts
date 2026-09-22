@@ -1,12 +1,14 @@
 /**
- * Ensure the right agent is installed and running on one machine.
+ * Put this release's binaries on one machine, and keep the agent running there.
  *
  * A machine is configured by its SSH destination and a token, nothing else:
  * the plugin resolves the platform, downloads the matching binary if this
  * machine does not already run the expected build, uploads it over the same
  * SSH connection, and starts it detached. The agent then binds a random
  * loopback port and publishes it in `state.json`, which is where the forward
- * learns where to point.
+ * learns where to point. The native PTC program host is the same install
+ * without the start, run in the background so a connection never waits behind a
+ * JavaScript engine.
  *
  * Reuse is decided from that state file and one marker beside the binary: a live
  * process running the expected build, started with the current launch recipe, is
@@ -185,7 +187,7 @@ const UPLOAD_PTC_HOST = 'cat > "$HOME/.dsh/remote-agent/dsh-ptc-host.new"'
   + ' && chmod 755 "$HOME/.dsh/remote-agent/dsh-ptc-host.new"'
   + ' && mv "$HOME/.dsh/remote-agent/dsh-ptc-host.new" "$HOME/.dsh/remote-agent/dsh-ptc-host"'
 
-/** Record which PTC program host build the step above installed. */
+/** Record the PTC program host build the upload installed. */
 const WRITE_PTC_HOST = 'cat > "$HOME/.dsh/remote-agent/ptc-host.json"'
 
 /**
@@ -308,6 +310,32 @@ async function runChecked(
   if (result.code !== 0) throw new Error(sshFailure(ssh.target, result.stderr, fallback))
 }
 
+/**
+ * Read a machine's platform and name one of this release's assets for it.
+ *
+ * The name is chosen from what the machine reports, so the platform is read
+ * before anything is fetched rather than guessed from this host.
+ * @param run - the command runner.
+ * @param ssh - the machine to reach.
+ * @param name - the asset name for a platform and architecture pair.
+ * @returns the release asset this machine takes.
+ * @throws when the platform cannot be read, or has no such asset.
+ */
+async function remoteAssetName(
+  run: AgentCommandRunner,
+  ssh: SshTarget,
+  name: (platform: string, arch: string) => string,
+): Promise<string> {
+  const uname = await run(ssh, 'uname -s; uname -m')
+  if (uname.code !== 0) {
+    throw new Error(
+      sshFailure(ssh.target, uname.stderr, `could not read the platform of "${ssh.target}"`),
+    )
+  }
+  const [platform, arch] = uname.stdout.split('\n')
+  return name(platform?.trim() ?? '', arch?.trim() ?? '')
+}
+
 /** The version one of this plugin's own marker files records, when it records one. */
 function markerVersion(stdout: string): string | undefined {
   try {
@@ -370,14 +398,7 @@ export async function ensureAgent(options: EnsureAgentOptions): Promise<AgentEnd
 
   // The platform is read once per call: every branch below either returns or
   // installs, so a second round trip would buy nothing.
-  const uname = await run(ssh, 'uname -s; uname -m')
-  if (uname.code !== 0) {
-    throw new Error(
-      sshFailure(ssh.target, uname.stderr, `could not read the platform of "${ssh.target}"`),
-    )
-  }
-  const [platform, arch] = uname.stdout.split('\n')
-  const assetName = agentAssetName(platform?.trim() ?? '', arch?.trim() ?? '')
+  const assetName = await remoteAssetName(run, ssh, agentAssetName)
 
   const state = await readState(run, ssh)
   // A pid that does not answer `kill -0` is a stale state file, not a running
@@ -507,16 +528,7 @@ export async function ensurePtcHost(options: EnsurePtcHostOptions): Promise<void
   const installed = await run(ssh, READ_PTC_HOST)
   if (installed.code === 0 && markerVersion(installed.stdout) === version) return
 
-  // The archive name is chosen from what the machine reports, so the platform
-  // is read before anything is fetched rather than guessed from this host.
-  const uname = await run(ssh, 'uname -s; uname -m')
-  if (uname.code !== 0) {
-    throw new Error(
-      sshFailure(ssh.target, uname.stderr, `could not read the platform of "${ssh.target}"`),
-    )
-  }
-  const [platform, arch] = uname.stdout.split('\n')
-  const assetName = ptcHostAssetName(platform?.trim() ?? '', arch?.trim() ?? '')
+  const assetName = await remoteAssetName(run, ssh, ptcHostAssetName)
   const binary = await resolveBinary({
     version,
     assetName,

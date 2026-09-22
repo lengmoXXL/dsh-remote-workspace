@@ -232,29 +232,33 @@
   // Every captured line is charged against the same combined budget the host
   // accounts for, as the JSON-escaped bytes its array element would take.
 
+  // The serialized cost of one character, and how many source units it takes:
+  // a well-formed surrogate pair is one code point in four bytes, a lone
+  // surrogate is escaped in six, and the rest follow JSON's escape set.
+  function characterCost(text, index) {
+    var code = text.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff && index + 1 < text.length) {
+      var low = text.charCodeAt(index + 1);
+      if (low >= 0xdc00 && low <= 0xdfff) return { cost: 4, width: 2 };
+    }
+    if (code >= 0xd800 && code <= 0xdfff) return { cost: 6, width: 1 };
+    if (code === 8 || code === 9 || code === 10 || code === 12 || code === 13 || code === 34 || code === 92) {
+      return { cost: 2, width: 1 };
+    }
+    if (code < 32) return { cost: 6, width: 1 };
+    if (code < 0x80) return { cost: 1, width: 1 };
+    if (code < 0x800) return { cost: 2, width: 1 };
+    return { cost: 3, width: 1 };
+  }
+
   function jsonStringBytesUpTo(text, limit) {
     if (limit < 2) return undefined;
     var bytes = 2;
-    for (var index = 0; index < text.length; index++) {
-      var code = text.charCodeAt(index);
-      var cost;
-      if (code >= 0xd800 && code <= 0xdbff && index + 1 < text.length) {
-        var low = text.charCodeAt(index + 1);
-        if (low >= 0xdc00 && low <= 0xdfff) {
-          bytes += 4;
-          index += 1;
-          if (bytes > limit) return undefined;
-          continue;
-        }
-      }
-      if (code >= 0xd800 && code <= 0xdfff) cost = 6;
-      else if (code === 8 || code === 9 || code === 10 || code === 12 || code === 13 || code === 34 || code === 92) cost = 2;
-      else if (code < 32) cost = 6;
-      else if (code < 0x80) cost = 1;
-      else if (code < 0x800) cost = 2;
-      else cost = 3;
-      bytes += cost;
+    for (var index = 0; index < text.length;) {
+      var step = characterCost(text, index);
+      bytes += step.cost;
       if (bytes > limit) return undefined;
+      index += step.width;
     }
     return bytes;
   }
@@ -268,27 +272,10 @@
     var bytes = 2;
     var end = 0;
     for (var index = 0; index < text.length;) {
-      var code = text.charCodeAt(index);
-      var width = 1;
-      var cost;
-      if (code >= 0xd800 && code <= 0xdbff && index + 1 < text.length) {
-        var low = text.charCodeAt(index + 1);
-        if (low >= 0xdc00 && low <= 0xdfff) {
-          width = 2;
-          cost = 4;
-        }
-      }
-      if (width === 1) {
-        if (code >= 0xd800 && code <= 0xdfff) cost = 6;
-        else if (code === 8 || code === 9 || code === 10 || code === 12 || code === 13 || code === 34 || code === 92) cost = 2;
-        else if (code < 32) cost = 6;
-        else if (code < 0x80) cost = 1;
-        else if (code < 0x800) cost = 2;
-        else cost = 3;
-      }
-      if (bytes + cost > limit) break;
-      bytes += cost;
-      index += width;
+      var step = characterCost(text, index);
+      if (bytes + step.cost > limit) break;
+      bytes += step.cost;
+      index += step.width;
       end = index;
     }
     return text.slice(0, end);
@@ -511,24 +498,22 @@
       nextId += 1;
       return id;
     };
-    var namespaces = [];
-    var errorClasses = new Map();
-    var index;
-    for (index = 0; index < data.namespaces.length; index++) {
-      var namespace = data.namespaces[index];
-      var errorClass = namespace.errorClass === undefined ? undefined : makeErrorClass(namespace.errorClass);
-      if (errorClass !== undefined) errorClasses.set(namespace.global, errorClass);
-      namespaces.push(makeNamespace(namespace, allocate, errorClass));
-    }
+    // The generated function takes the binding globals first, then the rejection
+    // class of every namespace that declared one, then console.
     var parameters = [];
     var values = [];
-    for (index = 0; index < data.namespaces.length; index++) parameters.push(data.namespaces[index].global);
-    for (index = 0; index < data.namespaces.length; index++) {
-      if (data.namespaces[index].errorClass !== undefined) parameters.push(data.namespaces[index].errorClass.name);
+    var classes = [];
+    for (var index = 0; index < data.namespaces.length; index++) {
+      var namespace = data.namespaces[index];
+      var errorClass = namespace.errorClass === undefined ? undefined : makeErrorClass(namespace.errorClass);
+      parameters.push(namespace.global);
+      values.push(makeNamespace(namespace, allocate, errorClass));
+      classes.push(errorClass);
     }
-    for (index = 0; index < namespaces.length; index++) values.push(namespaces[index]);
-    for (index = 0; index < data.namespaces.length; index++) {
-      if (data.namespaces[index].errorClass !== undefined) values.push(errorClasses.get(data.namespaces[index].global));
+    for (var classIndex = 0; classIndex < classes.length; classIndex++) {
+      if (classes[classIndex] === undefined) continue;
+      parameters.push(data.namespaces[classIndex].errorClass.name);
+      values.push(classes[classIndex]);
     }
     parameters.push('console');
     values.push(consoleShim);

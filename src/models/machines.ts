@@ -293,7 +293,13 @@ interface Entry {
   worker: WorkerStatus | undefined
 }
 
-/** Where a machine's native PTC program host sits, relative to its home directory. */
+/**
+ * Where a machine's native PTC program host sits, relative to its home
+ * directory.
+ *
+ * The install in `remote/agent/install.ts` uploads to this same path, which is
+ * what lets a spawn name the machine's worker without asking it anything.
+ */
 const PTC_HOST_SEGMENT = ['.dsh', 'remote-agent', 'dsh-ptc-host'] as const
 
 /**
@@ -384,7 +390,8 @@ export function createNodeConnections(deps: NodeConnectionsDeps = {}): NodeConne
   })
 
   /**
-   * The machine's own PTC program host, installing it over SSH on first need.
+   * The machine's own PTC program host, installed over SSH once and remembered
+   * for the connection.
    *
    * A reachable machine is not the same as a machine ready to run a program in,
    * and the program arrives long after the connection does, so the install is

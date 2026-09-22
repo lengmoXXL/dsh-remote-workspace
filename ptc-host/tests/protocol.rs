@@ -302,6 +302,21 @@ fn reports_an_oversized_completion_as_output_limit() {
 }
 
 #[test]
+fn charges_and_truncates_a_logged_line_in_json_bytes() {
+    // A surrogate pair is one code point in four serialized bytes, not the two
+    // JavaScript string units it occupies, so a budget of ten fits one of these
+    // two emoji and the quotes around it.
+    let (frames, logs, _) = execute(
+        "console.log('\u{1F600}\u{1F600}')",
+        json!([]),
+        10,
+        |_| json!({ "ok": true }),
+    );
+    assert_eq!(logs, vec!["\u{1F600}"]);
+    assert!(frames.contains(&"output-limit".to_string()));
+}
+
+#[test]
 fn rejects_lossy_arguments_before_posting() {
     let (frames, _, done) = execute(
         "try { await tools.ping(); return 'no throw' } catch (e) { return e.message }",

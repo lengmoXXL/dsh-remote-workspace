@@ -85,8 +85,8 @@ export interface RoutingSubprocessDeps {
   /** Resolves the live channel for a node. */
   readonly channel: ChannelLookup
   /**
-   * Absolute path of the node's own PTC program host, installed there on first
-   * need.
+   * Absolute path of the node's own PTC program host, which the connection
+   * installs there.
    *
    * The harness's PTC provider launches an interpreter in the execution world
    * and hands it a boot payload; on the host that interpreter is Node. A node

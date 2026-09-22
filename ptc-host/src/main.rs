@@ -13,10 +13,7 @@
 //! processes, git and terminals; a crash model code can cause must not be able
 //! to take those down with it.
 //!
-//! The whole launch is:
-//!
-//!     dsh-ptc-host [--max-old-space-size=<MiB>] <max-message-bytes>
-//!
+//! It is launched as `dsh-ptc-host [--max-old-space-size=<MiB>] <max-message-bytes>`
 //! with the control socketpair on descriptor 7.
 //!
 //! @module dsh-ptc-host
@@ -29,15 +26,11 @@ use std::process::ExitCode;
 
 use channel::Channel;
 
-/// Usage reported when argv is not a launch this host understands.
-const USAGE: &str = "usage: dsh-ptc-host [--max-old-space-size=<MiB>] <max-message-bytes>";
-
 thread_local! {
     /// The inherited control channel, shared with the V8 send callback.
     static OUTBOUND: RefCell<Option<Channel>> = const { RefCell::new(None) };
 }
 
-/// Run one program host, and report whether the protocol completed.
 fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     let Some(max_message_bytes) = arguments
@@ -45,7 +38,7 @@ fn main() -> ExitCode {
         .and_then(|value| value.parse::<usize>().ok())
         .filter(|value| *value > 0)
     else {
-        eprintln!("dsh-ptc-host: {USAGE}");
+        eprintln!("usage: dsh-ptc-host [--max-old-space-size=<MiB>] <max-message-bytes>");
         return ExitCode::from(2);
     };
     // The host passes Node's own heap ceiling when it spawns the Node backend;
@@ -93,11 +86,10 @@ fn main() -> ExitCode {
             }
         }
         let frame = OUTBOUND.with(|slot| {
-            let mut borrowed = slot.borrow_mut();
-            match borrowed.as_mut() {
-                Some(channel) => channel.read_frame(),
-                None => Err(std::io::Error::other("the control channel is gone")),
-            }
+            slot.borrow_mut()
+                .as_mut()
+                .expect("the control channel is installed before the loop")
+                .read_frame()
         });
         match frame {
             Ok(Some(bytes)) => {
@@ -106,8 +98,8 @@ fn main() -> ExitCode {
                     return ExitCode::from(1);
                 }
             }
-            // The host closing the channel ends the run; whatever it was
-            // waiting for is no longer coming.
+            // The host closing the channel ends the run: whatever the program
+            // was waiting for is no longer coming.
             Ok(None) => match program::close(scope) {
                 Ok(()) => break,
                 Err(error) => {

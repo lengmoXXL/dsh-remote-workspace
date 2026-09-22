@@ -6,9 +6,8 @@
 //! payload first and answers binding calls on the same stream, so this side only
 //! has to frame and unframe.
 //!
-//! The descriptor is fixed by the subprocess seam: it duplicates the control
-//! socketpair onto fd 7 and marks the child's environment, exactly as the Node
-//! bootstrap expects.
+//! The descriptor is fixed by the subprocess seam, which duplicates the control
+//! socketpair onto descriptor 7 before exec.
 //!
 //! @module dsh-ptc-host/channel
 
@@ -23,31 +22,30 @@ use std::os::fd::FromRawFd;
 /// The descriptor the subprocess seam publishes the control socketpair on.
 pub const CONTROL_DESCRIPTOR: i32 = 7;
 
-/// The length prefix of one frame, in bytes.
-const PREFIX_BYTES: usize = 4;
-
 /// One framed JSON byte stream, owned by this process.
 pub struct Channel {
-    /// The inherited endpoint. One descriptor serves both directions.
     file: File,
-    /// Largest frame either side may send, from the host's own validated limit.
+    /// The host's own frame limit, from argv.
     max_frame: usize,
 }
 
 impl Channel {
-    /**
-     * Adopt the inherited control descriptor.
-     * @param max_frame - the frame and queued-write limit the host passed in argv.
-     * @returns the channel, or the failure to adopt the descriptor.
-     */
     pub fn inherit(max_frame: usize) -> Result<Self> {
+        // The limit is validated here rather than at every write, because argv
+        // is the one place it enters the process and a frame longer than its
+        // length prefix can describe is not a write this side has to survive.
+        if max_frame > u32::MAX as usize {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                format!("the frame limit {max_frame} does not fit an unsigned 32-bit length"),
+            ));
+        }
         // SAFETY: the seam duplicates the control socketpair onto this
         // descriptor before exec, and nothing else in this process owns it.
         let file = unsafe { File::from_raw_fd(CONTROL_DESCRIPTOR) };
         Ok(Self { file, max_frame })
     }
 
-    /// Write one complete frame.
     pub fn write_frame(&mut self, payload: &[u8]) -> Result<()> {
         if payload.is_empty() || payload.len() > self.max_frame {
             return Err(Error::new(
@@ -59,15 +57,8 @@ impl Channel {
                 ),
             ));
         }
-        let length = u32::try_from(payload.len()).map_err(|_| {
-            Error::new(
-                ErrorKind::InvalidInput,
-                format!(
-                    "a control frame of {} bytes does not fit its length prefix",
-                    payload.len()
-                ),
-            )
-        })?;
+        let length = u32::try_from(payload.len())
+            .expect("the inherited frame limit fits an unsigned 32-bit length");
         self.file.write_all(&length.to_be_bytes())?;
         self.file.write_all(payload)?;
         self.file.flush()
@@ -75,15 +66,13 @@ impl Channel {
 
     /// Read one frame, or `None` once the peer closed the channel.
     pub fn read_frame(&mut self) -> Result<Option<Vec<u8>>> {
-        let mut header = [0u8; PREFIX_BYTES];
-        let mut filled = 0;
-        while filled < header.len() {
-            match self.file.read(&mut header[filled..]) {
-                Ok(0) => return Ok(None),
-                Ok(bytes) => filled += bytes,
-                Err(error) if error.kind() == ErrorKind::Interrupted => continue,
-                Err(error) => return Err(error),
-            }
+        let mut header = [0u8; 4];
+        match self.file.read_exact(&mut header) {
+            // A peer that closed mid-header is the channel ending, not a frame
+            // this side can report a length for.
+            Err(error) if error.kind() == ErrorKind::UnexpectedEof => return Ok(None),
+            Err(error) => return Err(error),
+            Ok(()) => {}
         }
         let length = u32::from_be_bytes(header) as usize;
         if length == 0 || length > self.max_frame {
