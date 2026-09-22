@@ -1,9 +1,11 @@
 # Dependencies
 node_modules/
 
-# Build outputs. The store installs this plugin from a pinned commit, so the
-# built JavaScript has to be in the source history; source maps do not.
-lib/*.map
+# Build outputs. The package is distributed through npm, which builds the
+# published tarball from these sources, so neither the bundles nor their maps
+# belong in the source history. A checkout builds them through the `prepare`
+# script that `npm install` runs.
+lib/
 
 # Cargo build outputs. The plugin installs the published release binary on the
 # remote machine, so nothing built here belongs in the source history.
