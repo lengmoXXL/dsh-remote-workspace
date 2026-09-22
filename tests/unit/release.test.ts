@@ -282,6 +282,35 @@ test('a checksum mismatch refuses the archive and names the download', async () 
   }
 })
 
+test("a release file falls back to a mirror when its own address fails", async () => {
+  const dir = await cacheDir()
+  try {
+    const archive = releaseArchive()
+    const seen: string[] = []
+    const binary = await resolveAgentBinary({
+      version: VERSION,
+      assetName: ASSET,
+      cacheDir: dir,
+      fetch: (url) => {
+        seen.push(url)
+        if (url === ARCHIVE_URL) return Promise.reject(new Error('connect timeout'))
+        if (url.endsWith(ARCHIVE)) return Promise.resolve(archive)
+        return Promise.resolve(sumsFor(ARCHIVE, archiveDigest(archive)))
+      },
+    })
+
+    assert.deepEqual(binary, BINARY)
+    assert.equal(seen[0], ARCHIVE_URL, 'the release address is tried first')
+    assert.equal(
+      seen.some(url => url !== ARCHIVE_URL && url.endsWith(ARCHIVE)),
+      true,
+      'and a mirror serves it when that address cannot',
+    )
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 test('a failed archive download names the URL it could not read', async () => {
   const dir = await cacheDir()
   try {
@@ -291,7 +320,9 @@ test('a failed archive download names the URL it could not read', async () => {
         assetName: ASSET,
         cacheDir: dir,
         fetch: (url) => {
-          if (url === ARCHIVE_URL) return Promise.reject(new Error('HTTP 404'))
+          // Every address for the archive fails, mirror included: the test is
+          // about what the diagnostic says once they all have.
+          if (url.endsWith(ARCHIVE)) return Promise.reject(new Error('HTTP 404'))
           return Promise.resolve(sumsFor(ARCHIVE, 'a'.repeat(64)))
         },
       }),
@@ -316,7 +347,7 @@ test('a failed sums download names the URL it could not read', async () => {
         assetName: ASSET,
         cacheDir: dir,
         fetch: (url) => {
-          if (url === SUMS_URL) return Promise.reject(new Error('socket hang up'))
+          if (url.endsWith('SHA256SUMS')) return Promise.reject(new Error('socket hang up'))
           return Promise.resolve(releaseArchive())
         },
       }),
