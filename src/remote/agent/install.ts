@@ -49,7 +49,7 @@ import { runSsh, sshFailure } from '../ssh.ts'
  * this together with the release tag and `agent/Cargo.toml`, which a unit test
  * keeps in step.
  */
-export const AGENT_VERSION = '0.0.6'
+export const AGENT_VERSION = '0.0.7'
 
 /**
  * Version of the launch recipe recorded in `launch-env.json`.

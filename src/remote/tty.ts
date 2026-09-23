@@ -1,11 +1,13 @@
 /**
  * The remote terminal provider: a PTY a node daemon owns.
  *
- * A terminal on another machine cannot be streamed: the wire answers one
- * request at a time, and the daemon retains a bounded window of output rather
- * than pushing it. This provider therefore polls that window into a local
- * `PassThrough`, so a consumer reads the same `Readable` it would read from a
- * local PTY, one poll interval behind.
+ * A terminal on another machine is followed rather than streamed: the wire
+ * answers one request at a time, and the daemon retains a bounded window of
+ * output. This provider reads that window into a local `PassThrough`, which a
+ * consumer reads exactly as it would read a local PTY. Each read waits at the
+ * daemon until there is something to answer with, so a quiet terminal costs one
+ * request every twenty seconds rather than one per poll interval, and a busy one
+ * costs one round trip per batch.
  *
  * What it drives is a port, not the harness wire directly: {@link TtyWire} is
  * the six terminal methods this provider needs, and the plugin that owns the
@@ -16,19 +18,30 @@
  * @module dsh-remote-workspace/remote/tty
  */
 
+import { once } from 'node:events'
 import { StringDecoder } from 'node:string_decoder'
 import { PassThrough } from 'node:stream'
 import { DEFAULT_TTY_GRACE_MS } from '../tty.ts'
 import type { TtyHandle, TtyOutcome, TtySpawnRequest } from '../tty.ts'
 
 /**
- * How often the proxy asks the daemon for new output.
+ * How long one read waits at the daemon for output before asking again.
  *
- * The wire serves retained windows rather than pushing, so this is the
- * interactive latency floor: small enough that a prompt appears promptly, large
- * enough that an idle terminal does not flood the connection.
+ * Long enough that a quiet terminal is silent on the wire, short enough that a
+ * connection which stopped answering is noticed while a person is still
+ * looking at the terminal.
  */
-const POLL_MS = 40
+const READ_WAIT_MS = 20_000
+
+/**
+ * How long to pause after a read that answered nothing and did not wait.
+ *
+ * A daemon that knows `waitMs` returns an empty read only after waiting for
+ * one, so this pause is invisible beside that wait. One that does not — an
+ * agent older than this plugin — answers at once, and this pace is what keeps
+ * that fast answer from becoming a hot loop.
+ */
+const IDLE_PACE_MS = 25
 
 /** One terminal allocation, as the daemon's wire carries it. */
 export interface TtyWireSpawnRequest {
@@ -54,12 +67,19 @@ export interface TtyWireStarted {
   readonly pid: number
 }
 
-/** One read of a terminal's retained output window. */
+/** One read of a terminal's output window. */
 export interface TtyWireRead {
   /** Raw bytes from the requested offset, base64. */
   readonly data: string
   /** Whole-stream byte offset to resume from. */
   readonly nextOffset: number
+  /**
+   * True when the requested offset had already slid out of the daemon's window,
+   * so `data` is the retained tail rather than the continuation asked for.
+   */
+  readonly lossy: boolean
+  /** Exit facts, present once the terminal's process has ended. */
+  readonly outcome?: TtyWireOutcome | null
 }
 
 /** Exit facts of one closed terminal. */
@@ -74,13 +94,16 @@ export interface TtyWireOutcome {
  * The terminal methods of one node's wire.
  *
  * Every method rejects when the node cannot be reached, which is what lets the
- * proxy settle a terminal whose transport is gone instead of polling forever.
+ * proxy settle a terminal whose transport is gone instead of waiting forever.
  */
 export interface TtyWire {
   /** Allocate one terminal and start the program in it. */
   spawn(request: TtyWireSpawnRequest): Promise<TtyWireStarted>
-  /** Read retained output from one whole-stream byte offset. */
-  read(termId: string, fromByte: number): Promise<TtyWireRead>
+  /**
+   * Read retained output from one whole-stream byte offset, waiting up to
+   * `waitMs` for output that has not arrived yet.
+   */
+  read(termId: string, fromByte: number, waitMs?: number): Promise<TtyWireRead>
   /** Deliver input bytes. */
   write(termId: string, data: string): Promise<void>
   /** Adopt a new window size. */
@@ -126,56 +149,84 @@ export async function createRemoteTty(
   })
 
   const output = new PassThrough()
-  // A poll reads a raw byte window, so it can end in the middle of a character;
-  // the decoder holds the partial sequence until the next poll completes it.
+  // A read returns a raw byte window, so it can end in the middle of a
+  // character; the decoder holds the partial sequence until the next read
+  // completes it.
   const decoder = new StringDecoder('utf8')
   let offset = 0
   let finished = false
-  let pumping = false
-  let timer: NodeJS.Timeout | undefined
 
   let settleDone: (outcome: TtyOutcome) => void = () => {}
   const done = new Promise<TtyOutcome>((resolve) => { settleDone = resolve })
 
-  /** Publish the outcome once and stop polling. */
+  /** Publish the outcome once and stop reading. */
   const finish = (outcome: TtyOutcome): void => {
     if (finished) return
     finished = true
-    if (timer !== undefined) clearInterval(timer)
     output.end(decoder.end())
     settleDone(outcome)
   }
 
-  /** Pull whatever the daemon has written since the last offset. */
-  const pull = async (): Promise<void> => {
-    const read = await wire.read(started.termId, offset)
-    offset = read.nextOffset
-    if (read.data.length > 0) output.write(decoder.write(Buffer.from(read.data, 'base64')))
+  /** Write to the local stream, waiting for a consumer that has fallen behind. */
+  const publish = async (text: string): Promise<void> => {
+    // A teardown can settle the handle while a read that was already in flight
+    // is still resuming, and writing to an ended stream would crash the loop.
+    if (finished || text.length === 0) return
+    if (!output.write(text)) await once(output, 'drain')
   }
 
-  /** One poll: pull what the daemon retains, then ask whether it exited. */
-  const tick = async (): Promise<void> => {
-    if (pumping || finished) return
-    pumping = true
-    try {
-      await pull()
-      const outcome = await wire.outcome(started.termId)
-      if (outcome !== null) {
-        finish({ exitCode: outcome.exitCode, signal: outcome.signal as NodeJS.Signals | null })
+  /**
+   * Read what the daemon has written since the last offset.
+   * @returns the exit facts once the terminal has ended, otherwise undefined.
+   */
+  const pull = async (): Promise<TtyWireOutcome | null | undefined> => {
+    const read = await wire.read(started.termId, offset, READ_WAIT_MS)
+    const bytes = read.data.length === 0 ? Buffer.alloc(0) : Buffer.from(read.data, 'base64')
+    if (read.lossy) {
+      // The offset asked for had slid out of the daemon's window, so these bytes
+      // are the retained tail: the bytes before it are gone and cannot be
+      // fetched. Saying so is the difference between a gap and a splice.
+      const lost = read.nextOffset - bytes.length - offset
+      await publish('\r\n[output lost: ' + String(lost) + ' bytes]\r\n')
+    }
+    offset = read.nextOffset
+    if (bytes.length > 0) {
+      await publish(decoder.write(bytes))
+      return read.outcome
+    }
+    if (read.outcome != null) return read.outcome
+    // An empty answer means "nothing yet". A daemon that knows \`waitMs\` returns
+    // one only after waiting, and its read already carries the exit facts; one
+    // older than this plugin answers at once and cannot, so its facts are asked
+    // for directly rather than waiting for a read that will never say them.
+    const facts = await wire.outcome(started.termId)
+    if (facts !== null) return facts
+    await new Promise(resolve => setTimeout(resolve, IDLE_PACE_MS))
+    return undefined
+  }
+
+  const follow = async (): Promise<void> => {
+    for (;;) {
+      let ended: TtyWireOutcome | null | undefined
+      try {
+        ended = await pull()
+      } catch {
+        // A dropped transport ends the terminal: the handle settles rather than
+        // hanging on output that can no longer arrive.
+        finish({ exitCode: null, signal: null })
+        return
       }
-    } catch {
-      // A dropped transport ends the terminal: the handle settles rather than
-      // hanging on output that can no longer arrive.
-      finish({ exitCode: null, signal: null })
-    } finally {
-      pumping = false
+      if (finished) return
+      if (ended != null) {
+        finish({
+          exitCode: ended?.exitCode ?? null,
+          signal: (ended?.signal ?? null) as NodeJS.Signals | null,
+        })
+        return
+      }
     }
   }
-
-  timer = setInterval(() => void tick(), POLL_MS)
-  // A terminal must not hold the host open by itself; the caller releases it.
-  timer.unref()
-  void tick()
+  void follow()
 
   /** The teardown in flight, so a second `terminate` joins the first. */
   let stopping: Promise<void> | undefined
@@ -194,11 +245,14 @@ export async function createRemoteTty(
       stopping ??= (async () => {
         if (finished) return
         await wire.terminate(started.termId)
-        // One last pull, so output produced during teardown is not lost.
-        await pull().catch(() => undefined)
-        // A terminal the daemon no longer knows reads as "no outcome": the exit
-        // facts are absent, which is exactly what a released terminal has.
-        const outcome = await wire.outcome(started.termId).catch(() => null)
+        // One last pull, so output produced during teardown is not lost, then
+        // the facts the daemon kept. A terminal the daemon no longer knows reads
+        // as "no outcome": the exit facts are absent, which is exactly what a
+        // released terminal has.
+        const last = await pull().catch(() => undefined)
+        const outcome = last === undefined
+          ? await wire.outcome(started.termId).catch(() => null)
+          : last
         finish({
           exitCode: outcome?.exitCode ?? null,
           signal: (outcome?.signal ?? null) as NodeJS.Signals | null,

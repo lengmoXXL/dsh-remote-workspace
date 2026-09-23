@@ -49,7 +49,11 @@ export interface RoutingTtyDeps {
 export function terminalWire(channel: NodeChannel): TtyWire {
   return {
     spawn: request => channel.request('term.spawn', request),
-    read: (termId, fromByte) => channel.request('term.read', { termId: asTermId(termId), fromByte }),
+    read: (termId, fromByte, waitMs) => channel.request('term.read', {
+      termId: asTermId(termId),
+      fromByte,
+      ...waitMs === undefined ? {} : { waitMs },
+    }),
     // The daemon answers these with an empty object; the port promises nothing
     // back, so the answer is awaited and dropped.
     write: async (termId, data) => {

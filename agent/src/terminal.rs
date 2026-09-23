@@ -22,7 +22,7 @@ use std::os::unix::io::RawFd;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tokio::sync::Mutex as AsyncMutex;
+use tokio::sync::{Mutex as AsyncMutex, Notify};
 
 use crate::execution::{
     group_alive, outcome_of_status, scrubbed_environment, signal_group, unique_id,
@@ -88,6 +88,7 @@ impl TerminalBackend {
             pid,
             grace_ms: spec.grace_ms,
             output: StreamBuffer::new(TERMINAL_WINDOW_BYTES),
+            data: Notify::new(),
             outcome: Mutex::new(None),
             master: Mutex::new(Some(master)),
             ladder: AsyncMutex::new(()),
@@ -107,13 +108,41 @@ impl TerminalBackend {
     }
 
     /// Read retained terminal output from a whole-stream byte offset.
-    pub fn read(&self, term_id: &str, from_byte: u64) -> Result<Value> {
-        let (bytes, next_offset, lossy) = self.require(term_id)?.output.read(from_byte);
-        Ok(json!({
-            "data": base64::engine::general_purpose::STANDARD.encode(&bytes),
-            "nextOffset": next_offset,
-            "lossy": lossy,
-        }))
+    ///
+    /// Waits up to `wait_ms` for output that has not arrived yet, so a reader
+    /// following a quiet terminal makes one request per arrival instead of one
+    /// per interval. A read with anything to say — bytes, a window that slid, or
+    /// the facts of a session that has already ended — says it at once.
+    /// @param term_id - the terminal to read.
+    /// @param from_byte - whole-stream offset to resume from.
+    /// @param wait_ms - how long to wait for output that has not arrived.
+    /// @returns the read, and the exit facts once the session has ended.
+    pub async fn read(&self, term_id: &str, from_byte: u64, wait_ms: u64) -> Result<Value> {
+        let terminal = self.require(term_id)?;
+        let deadline = Instant::now() + Duration::from_millis(wait_ms);
+        loop {
+            // Registered before the state is read, so a byte that lands between
+            // the two wakes this read instead of waiting out the timeout.
+            let notified = terminal.data.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+
+            let (bytes, next_offset, lossy) = terminal.output.read(from_byte);
+            let facts = terminal
+                .outcome
+                .lock()
+                .expect("terminal outcome poisoned")
+                .clone();
+            if !bytes.is_empty() || lossy || facts.is_some() || Instant::now() >= deadline {
+                return Ok(read_reply(&bytes, next_offset, lossy, facts.as_ref()));
+            }
+
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            tokio::select! {
+                () = &mut notified => {}
+                () = tokio::time::sleep(remaining) => {}
+            }
+        }
     }
 
     pub async fn write(&self, term_id: &str, data: &str) -> Result<Value> {
@@ -215,6 +244,8 @@ struct ManagedTerminal {
     pid: i32,
     grace_ms: u64,
     output: StreamBuffer,
+    /// Wakes every read waiting for output when one arrives, or the session ends.
+    data: Notify,
     outcome: Mutex<Option<Outcome>>,
     /// The master descriptor, or `None` once the reader has released it.
     master: Mutex<Option<RawFd>>,
@@ -341,6 +372,20 @@ impl ManagedTerminal {
     }
 }
 
+/// One `term.read` answer: the bytes, where to resume, whether the window had
+/// slid, and the exit facts when the session has ended.
+fn read_reply(bytes: &[u8], next_offset: u64, lossy: bool, facts: Option<&Outcome>) -> Value {
+    let mut reply = json!({
+        "data": base64::engine::general_purpose::STANDARD.encode(bytes),
+        "nextOffset": next_offset,
+        "lossy": lossy,
+    });
+    if let Some(facts) = facts {
+        reply["outcome"] = Outcome::to_json(Some(facts));
+    }
+    reply
+}
+
 /// Start the output reader and the reaper for one freshly forked session.
 fn start_watchers(terminal: &Arc<ManagedTerminal>, master: RawFd) {
     let reader = terminal.clone();
@@ -352,6 +397,7 @@ fn start_watchers(terminal: &Arc<ManagedTerminal>, master: RawFd) {
                 break;
             }
             reader.output.push(&buffer[..read as usize]);
+            reader.data.notify_waiters();
         }
         // The reader owns the descriptor's lifetime, so a close can never race a
         // write that already observed it.
@@ -368,6 +414,7 @@ fn start_watchers(terminal: &Arc<ManagedTerminal>, master: RawFd) {
             if waited == reaper.pid {
                 *reaper.outcome.lock().expect("terminal outcome poisoned") =
                     Some(outcome_of_status(status));
+                reaper.data.notify_waiters();
                 return;
             }
             if waited < 0 {
@@ -379,6 +426,7 @@ fn start_watchers(terminal: &Arc<ManagedTerminal>, master: RawFd) {
                 // simply unknown rather than the daemon hanging on it.
                 *reaper.outcome.lock().expect("terminal outcome poisoned") =
                     Some(Outcome::unknown());
+                reaper.data.notify_waiters();
                 return;
             }
         }

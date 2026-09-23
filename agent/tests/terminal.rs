@@ -36,15 +36,15 @@ fn payload(read: &Value) -> String {
 }
 
 /// Read everything the terminal has produced so far.
-fn read_all(term: &TerminalBackend, id: &str) -> String {
-    payload(&term.read(id, 0).unwrap())
+async fn read_all(term: &TerminalBackend, id: &str) -> String {
+    payload(&term.read(id, 0, 0).await.unwrap())
 }
 
 /// Poll until the accumulated output contains `needle`, or give up.
 async fn output_contains(term: &TerminalBackend, id: &str, needle: &str) -> String {
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
-        let output = read_all(term, id);
+        let output = read_all(term, id).await;
         if output.contains(needle) {
             return output;
         }
@@ -143,7 +143,7 @@ async fn refuses_a_program_that_does_not_exist() {
 async fn an_unknown_terminal_is_reported_rather_than_ignored() {
     let term = TerminalBackend::new();
     assert_eq!(
-        term.read("nope", 0).unwrap_err().code,
+        term.read("nope", 0, 0).await.unwrap_err().code,
         "SP_NO_SUCH_TERMINAL"
     );
     assert_eq!(
@@ -175,7 +175,10 @@ async fn a_spawn_after_close_ends_the_terminal_instead_of_publishing_it() {
         .expect("a closed backend answers the spawn it already accepted");
     let id = term_id(result.clone());
     let pid = result["pid"].as_i64().expect("pid") as i32;
-    assert_eq!(term.read(&id, 0).unwrap_err().code, "SP_NO_SUCH_TERMINAL");
+    assert_eq!(
+        term.read(&id, 0, 0).await.unwrap_err().code,
+        "SP_NO_SUCH_TERMINAL"
+    );
 
     let deadline = Instant::now() + Duration::from_secs(5);
     while unsafe { libc::kill(pid, 0) } == 0 {
@@ -200,4 +203,67 @@ async fn refuses_a_program_or_argument_holding_a_nul() {
             .expect_err("a NUL in argv cannot start a program");
         assert_eq!(error.code, "SP_TERMINAL_FAILED");
     }
+}
+
+#[tokio::test]
+async fn a_read_waits_for_output_instead_of_polling_for_it() {
+    let fixture = TempDir::new("drw-term-wait");
+    let term = TerminalBackend::new();
+    let id = term_id(
+        term.spawn(spec(
+            fixture.path(),
+            &["/bin/sh", "-c", "sleep 0.3; printf late-arrival"],
+        ))
+        .unwrap(),
+    );
+
+    // The read asks to wait far longer than the program takes, so returning
+    // before the deadline is the proof that the arrival woke it.
+    let started = Instant::now();
+    let read = term.read(&id, 0, 10_000).await.unwrap();
+    let elapsed = started.elapsed();
+
+    assert!(payload(&read).contains("late-arrival"), "{read:?}");
+    assert!(
+        elapsed < Duration::from_secs(5),
+        "the read waited out its whole deadline: {elapsed:?}"
+    );
+    term.terminate(&id).await.unwrap();
+}
+
+#[tokio::test]
+async fn a_read_of_a_quiet_terminal_answers_empty_after_its_wait() {
+    let fixture = TempDir::new("drw-term-quiet");
+    let term = TerminalBackend::new();
+    let id = term_id(
+        term.spawn(spec(fixture.path(), &["/bin/sh", "-c", "sleep 30"]))
+            .unwrap(),
+    );
+
+    let started = Instant::now();
+    let read = term.read(&id, 0, 60).await.unwrap();
+    let elapsed = started.elapsed();
+
+    assert_eq!(payload(&read), "");
+    assert!(read.get("outcome").is_none(), "{read:?}");
+    assert!(
+        elapsed >= Duration::from_millis(50),
+        "an empty read returned before its wait elapsed: {elapsed:?}"
+    );
+    term.terminate(&id).await.unwrap();
+}
+
+#[tokio::test]
+async fn a_read_carries_the_exit_facts_of_a_session_that_ended() {
+    let fixture = TempDir::new("drw-term-read-outcome");
+    let term = TerminalBackend::new();
+    let id = term_id(
+        term.spawn(spec(fixture.path(), &["/bin/sh", "-c", "exit 7"]))
+            .unwrap(),
+    );
+
+    // Following a terminal reads its exit facts directly, so a reader needs no
+    // second request to learn that the session ended.
+    let read = term.read(&id, 0, 10_000).await.unwrap();
+    assert_eq!(read["outcome"]["exitCode"].as_i64(), Some(7), "{read:?}");
 }

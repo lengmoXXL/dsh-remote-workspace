@@ -271,6 +271,19 @@ export interface WireOutcome {
 }
 
 /**
+ * One read of a terminal's output.
+ *
+ * Beside the bytes a collected read answers with, this carries the exit facts
+ * once the session has ended: a reader following a terminal asks once per
+ * arrival rather than once per interval, so the request that learns the session
+ * ended is the same one that learns what it exited with.
+ */
+export interface WireTerminalRead extends WireOutputRead {
+  /** Exit facts, present once the terminal's process has ended. */
+  readonly outcome?: WireOutcome | null
+}
+
+/**
  * The notification a daemon pushes for every chunk of a `'pipe'` stream.
  *
  * A raw piped stream is not a retained window: the consumer needs every byte in
@@ -433,8 +446,12 @@ export interface WireMethods {
   'sp.outcome': { params: { procId: ProcId }; result: WireOutcome | null }
   'term.spawn': { params: WireTerminalSpawnSpec; result: { termId: TermId; pid: number } }
   'term.read': {
-    params: { termId: TermId; fromByte: number }
-    result: WireOutputRead
+    /**
+     * `waitMs` holds the answer until the terminal has output or ends, so a
+     * quiet terminal costs one request per arrival instead of one per interval.
+     */
+    params: { termId: TermId; fromByte: number; waitMs?: number }
+    result: WireTerminalRead
   }
   'term.write': { params: { termId: TermId; data: string }; result: Record<string, never> }
   'term.resize': {

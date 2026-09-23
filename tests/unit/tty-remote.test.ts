@@ -17,7 +17,7 @@ import { watcher } from '../tty.ts'
 /** One call the provider made, as the scripted wire recorded it. */
 type Call =
   | { readonly kind: 'spawn'; readonly request: TtyWireSpawnRequest }
-  | { readonly kind: 'read'; readonly termId: string; readonly fromByte: number }
+  | { readonly kind: 'read'; readonly termId: string; readonly fromByte: number; readonly waitMs: number | undefined }
   | { readonly kind: 'write'; readonly termId: string; readonly data: string }
   | { readonly kind: 'resize'; readonly termId: string; readonly cols: number; readonly rows: number }
   | { readonly kind: 'terminate'; readonly termId: string }
@@ -50,9 +50,9 @@ function scriptedWire(options: {
         calls.push({ kind: 'spawn', request })
         return { termId: 'term-1', pid: 4242 }
       },
-      async read(termId, fromByte): Promise<TtyWireRead> {
-        calls.push({ kind: 'read', termId, fromByte })
-        const answer = options.reads?.[reads++] ?? { data: '', nextOffset: fromByte }
+      async read(termId, fromByte, waitMs): Promise<TtyWireRead> {
+        calls.push({ kind: 'read', termId, fromByte, waitMs })
+        const answer = options.reads?.[reads++] ?? { data: '', nextOffset: fromByte, lossy: false }
         if (answer instanceof Error) throw answer
         return answer
       },
@@ -83,18 +83,18 @@ const request = {
   rows: 24,
 }
 
-/** Wait for one poll interval and a little more, so a stopped poll is visible. */
-async function quiet(): Promise<void> {
-  await new Promise(resolve => setTimeout(resolve, 150))
+/** One read answer that carries the terminal's exit facts. */
+function ended(exitCode: number, nextOffset: number): TtyWireRead {
+  return { data: '', nextOffset, lossy: false, outcome: { exitCode, signal: null } }
 }
 
 /**
  * Wait for a promise while keeping the event loop awake.
  *
- * The provider's poll timer is deliberately unref'd — a terminal must not hold
- * the host open by itself — and on Node 22 and 24 the test runner cancels a case
- * whose promise is still pending when the loop drains, which is how this file
- * failed on CI before the wait held a timer of its own.
+ * The provider follows the daemon with no timer of its own, and on Node 22 and
+ * 24 the test runner cancels a case whose promise is still pending when the loop
+ * drains, which is how this file failed on CI before the wait held a timer of
+ * its own.
  * @param promise - what is being waited on.
  * @param timeoutMs - how long to wait before failing.
  * @returns what the promise resolved to.
@@ -114,11 +114,10 @@ async function settled<T>(promise: Promise<T>, timeoutMs = 2000): Promise<T> {
 test('what the daemon retains is published in order, and the exit settles the handle', async () => {
   const { wire, calls } = scriptedWire({
     reads: [
-      { data: encoded('hello '), nextOffset: 6 },
-      { data: encoded('world'), nextOffset: 11 },
-      { data: '', nextOffset: 11 },
+      { data: encoded('hello '), nextOffset: 6, lossy: false },
+      { data: encoded('world'), nextOffset: 11, lossy: false },
+      ended(0, 11),
     ],
-    outcomes: [null, null, { exitCode: 0, signal: null }],
   })
   const handle = await createRemoteTty(wire, { ...request, graceMs: 300 })
   const output = watcher(handle)
@@ -131,14 +130,34 @@ test('what the daemon retains is published in order, and the exit settles the ha
     kind: 'spawn',
     request: { argv: ['/bin/sh', '-l'], cwd: '/srv/checkout', rows: 24, cols: 80, graceMs: 300 },
   })
-  // Offsets advance monotonically: the second read resumes where the first ended.
-  const offsets = calls.flatMap(call => call.kind === 'read' ? [call.fromByte] : [])
-  assert.deepEqual(offsets.slice(0, 2), [0, 6])
+  // Offsets advance monotonically, and each read asks the daemon to wait.
+  const reads = calls.flatMap(call => call.kind === 'read' ? [call] : [])
+  assert.deepEqual(reads.slice(0, 2).map(call => call.fromByte), [0, 6])
+  assert.equal(reads.every(call => (call.waitMs ?? 0) > 0), true, 'every read waits at the daemon')
 
-  // Polling stops with the terminal rather than running until the host exits.
+  // The exit settled the handle, so no further read was issued.
   const recorded = calls.length
-  await quiet()
+  await new Promise(resolve => setTimeout(resolve, 80))
   assert.equal(calls.length, recorded)
+})
+
+test('output the daemon dropped is reported rather than spliced in', async () => {
+  const { wire } = scriptedWire({
+    reads: [
+      { data: encoded('early'), nextOffset: 5, lossy: false },
+      // The offset asked for (5) slid out of the window, which held bytes
+      // 91..100: the four bytes here are the tail, not a continuation.
+      { data: encoded('TAIL'), nextOffset: 100, lossy: true },
+      ended(0, 100),
+    ],
+  })
+  const handle = await createRemoteTty(wire, request)
+  const output = watcher(handle)
+  await output.until('TAIL')
+
+  assert.match(output.seen(), /output lost: 91 bytes/)
+  assert.match(output.seen(), /early/)
+  assert.deepEqual(await settled(handle.done), { exitCode: 0, signal: null })
 })
 
 test('a resize and a write reach the daemon with the terminal it minted', async () => {
@@ -160,7 +179,7 @@ test('a resize and a write reach the daemon with the terminal it minted', async 
 
 test('releasing a terminal keeps the bytes teardown produced', async () => {
   const { wire, calls } = scriptedWire({
-    reads: [{ data: encoded('goodbye\n'), nextOffset: 8 }],
+    reads: [{ data: encoded('goodbye\n'), nextOffset: 8, lossy: false }],
   })
   const handle = await createRemoteTty(wire, request)
   const output = watcher(handle)
@@ -172,10 +191,25 @@ test('releasing a terminal keeps the bytes teardown produced', async () => {
   assert.equal(calls.filter(call => call.kind === 'terminate').length, 1)
 })
 
-test('a dropped transport settles the terminal instead of polling forever', async () => {
+test('a dropped transport settles the terminal instead of reading forever', async () => {
   const { wire } = scriptedWire({ reads: [new Error('socket hang up')] })
   const handle = await createRemoteTty(wire, request)
   assert.deepEqual(await settled(handle.done), { exitCode: null, signal: null })
+})
+
+test('a daemon that cannot report exit in a read still settles the terminal', async () => {
+  // An agent older than this plugin's `waitMs` answers a read at once and
+  // cannot attach exit facts to it, so the facts are asked for directly.
+  const { wire, calls } = scriptedWire({
+    reads: [{ data: encoded('bye\n'), nextOffset: 4, lossy: false }],
+    outcomes: [{ exitCode: 5, signal: null }],
+  })
+  const handle = await createRemoteTty(wire, request)
+  const output = watcher(handle)
+
+  assert.deepEqual(await settled(handle.done), { exitCode: 5, signal: null })
+  assert.equal(output.seen(), 'bye\n')
+  assert.equal(calls.some(call => call.kind === 'outcome'), true)
 })
 
 test('a terminal that cannot be allocated fails the caller', async () => {

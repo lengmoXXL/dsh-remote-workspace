@@ -226,10 +226,14 @@ pub async fn dispatch(method: &str, params: &Value, backends: &Backends) -> Resu
         "term.spawn" => backends.term.spawn(read_terminal_spec(params, method)?),
         "term.read" => {
             let source = as_record(params, method)?;
-            backends.term.read(
-                require_string(source, "termId", method)?,
-                require_integer(source, "fromByte", method, 0)?,
-            )
+            backends
+                .term
+                .read(
+                    require_string(source, "termId", method)?,
+                    require_integer(source, "fromByte", method, 0)?,
+                    optional_integer(source, "waitMs", method, 0)?,
+                )
+                .await
         }
         "term.write" => {
             let source = as_record(params, method)?;
@@ -359,6 +363,19 @@ fn require_integer(
                 format!("\"{field}\" must be a safe integer no smaller than {minimum}"),
             )
         })
+}
+
+/// Read an optional integer member, or `default` when it is absent.
+fn optional_integer(
+    source: &Map<String, Value>,
+    field: &str,
+    method: &str,
+    default: u64,
+) -> Result<u64> {
+    match source.get(field) {
+        None | Some(Value::Null) => Ok(default),
+        _ => require_integer(source, field, method, 0),
+    }
 }
 
 /// Read a required boolean member.
