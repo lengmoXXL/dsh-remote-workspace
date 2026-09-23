@@ -1047,28 +1047,25 @@ export interface WorkspaceLabelParts {
   readonly name?: string | undefined
 }
 
-/** Separator between the three parts. */
-const SEPARATOR = ' · '
-
 /**
  * Build the display title a remote directory gets as a local workspace.
  *
  * A workspace title is read by a person scanning a sidebar, so it names the
- * things that distinguish one from another — which checkout, which repository,
- * and which machine — and never the opaque ids this plugin routes by. The
- * checkout leads because it is what the person chose and what they are looking
- * for; the machine trails because it is the context they already know. A
- * directory opened as itself has no checkout to name, so its title begins at
- * the repository. An unnamed repository falls back to its last path segment,
- * which is what a user would have called it; a path with no segment at all
- * falls back to the whole path so the label is never blank.
+ * things that distinguish one from another — which machine, which repository,
+ * and which checkout — and never the opaque ids this plugin routes by. The
+ * machine leads in brackets because it is context a person reads past; the
+ * checkout trails in its own brackets because it is what they chose. A
+ * directory opened as itself has no checkout to name, so its title is the
+ * machine and the repository alone. An unnamed repository falls back to its
+ * last path segment, which is what a user would have called it; a path with no
+ * segment at all falls back to the whole path so the label is never blank.
  * @param parts - the machine, repository, and checkout names.
- * @returns the composed title.
+ * @returns the composed title, e.g. `[vm149] ACM-notes : [web-verify]`.
  */
 export function workspaceLabel(parts: WorkspaceLabelParts): string {
   const base = posix.basename(parts.repoPath)
   const repo = parts.repoName?.trim()
     || (base === '' || base === '/' ? parts.repoPath : base)
-  const segments = parts.name === undefined ? [repo, parts.machine] : [parts.name, repo, parts.machine]
-  return segments.join(SEPARATOR)
+  const machine = `[${parts.machine}]`
+  return parts.name === undefined ? `${machine} ${repo}` : `${machine} ${repo} : [${parts.name}]`
 }

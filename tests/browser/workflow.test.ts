@@ -415,7 +415,7 @@ async function reload(page: FirefoxPage, instance: E2eInstance): Promise<void> {
   await clearShellDialogs(page)
   await waitFor(
     page,
-    `document.body.innerText.includes('here · local-repo · Local')`,
+    `document.body.innerText.includes('[Local] local-repo : [here]')`,
     'the workspace list after the reload',
   )
   await clearShellDialogs(page)
@@ -879,7 +879,7 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     // A checkout the plugin never cut is a row already, read straight from the
     // machine's git; opening it adopts it and registers it as a workspace.
     await clickRowControl(page, 'hand-cut', 'openWorktree')
-    await waitFor(page, `document.body.innerText.includes('hand-cut · demo-repo')`, 'the adopted workspace')
+    await waitFor(page, `document.body.innerText.includes('demo-repo : [hand-cut]')`, 'the adopted workspace')
     // A checkout the plugin found is the operator's to remove as well.
     await waitForEnabled(page, controlFor('hand-cut', 'closeWorktree'), 'the row to offer closing its workspace')
     await waitForRowActions(page, 'hand-cut', ['removeWorktree'])
@@ -1003,7 +1003,7 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     )
     assert.equal(localEntry?.anchor.branch, 'worktree/here')
     // The workspace a session would open is labelled for this machine too.
-    await waitFor(page, `document.body.innerText.includes('here · local-repo · Local')`, 'the local workspace label')
+    await waitFor(page, `document.body.innerText.includes('[Local] local-repo : [here]')`, 'the local workspace label')
     await shot('10-local-worktree')
 
     // The terminal section drives a real PTY on the deployment host. A sandbox
@@ -1018,7 +1018,7 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     // A terminal tab belongs to a Session's right Sidebar, and only worktree
     // management has run so far: the workspace just cut is opened as a Session
     // here, the way an operator would, so the terminal has one to belong to.
-    await openWorkspaceSession(page, 'here · local-repo · Local')
+    await openWorkspaceSession(page, '[Local] local-repo : [here]')
 
     // Closing a tab no longer ends its shell: teardown only closes the socket,
     // so the host detaches the terminal and the chooser lists it as detached.
@@ -1122,7 +1122,7 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     // control reuses the blank Session this run started — and then open the
     // chooser from the strip's add control. The shell the reload detached is
     // what it offers, and it says so.
-    await openWorkspaceSession(page, 'here · local-repo · Local')
+    await openWorkspaceSession(page, '[Local] local-repo : [here]')
     await openTerminalChooser(page)
     await waitFor(
       page,
@@ -1165,7 +1165,7 @@ test('a remote worktree is created and removed through the browser', { timeout: 
     // A second reload leaves the chooser the same choice, and the New terminal
     // entry must open a different shell rather than the detached one.
     await reload(page, instance)
-    await openWorkspaceSession(page, 'here · local-repo · Local')
+    await openWorkspaceSession(page, '[Local] local-repo : [here]')
     const fresh = await openTerminal(page, 'new')
     assert.notEqual(fresh, secondTerminal, 'the New terminal choice opened a different shell')
     await shot('15-new-terminal')
