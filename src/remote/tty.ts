@@ -33,17 +33,6 @@ import type { TtyHandle, TtyOutcome, TtySpawnRequest } from '../tty.ts'
  */
 const READ_WAIT_MS = 20_000
 
-/**
- * How long to pause after a read that answered nothing and did not wait.
- *
- * A daemon that knows `waitMs` returns an empty read only after waiting for
- * one, so this pause is invisible beside that wait. One that does not — an
- * agent older than this plugin — answers at once, and this pace is the poll
- * interval this loop replaced: the two requests an answer costs therefore cost
- * no more than the old poll's two did.
- */
-const IDLE_PACE_MS = 40
-
 /** One terminal allocation, as the daemon's wire carries it. */
 export interface TtyWireSpawnRequest {
   /** Executable and arguments; the daemon never shell-interprets them. */
@@ -156,6 +145,9 @@ export async function createRemoteTty(
   const decoder = new StringDecoder('utf8')
   let offset = 0
   let finished = false
+  // Set once teardown begins, so the follow loop stops after the read it already
+  // had in flight instead of racing the teardown for the same terminal.
+  let releasing = false
 
   let settleDone: (outcome: TtyOutcome) => void = () => {}
   const done = new Promise<TtyOutcome>((resolve) => { settleDone = resolve })
@@ -191,19 +183,10 @@ export async function createRemoteTty(
       await publish('\r\n[output lost: ' + String(lost) + ' bytes]\r\n')
     }
     offset = read.nextOffset
-    if (bytes.length > 0) {
-      await publish(decoder.write(bytes))
-      return read.outcome
-    }
-    if (read.outcome != null) return read.outcome
-    // An empty answer means "nothing yet". A daemon that knows \`waitMs\` returns
-    // one only after waiting, and its read already carries the exit facts; one
-    // older than this plugin answers at once and cannot, so its facts are asked
-    // for directly rather than waiting for a read that will never say them.
-    const facts = await wire.outcome(started.termId)
-    if (facts !== null) return facts
-    await new Promise(resolve => setTimeout(resolve, IDLE_PACE_MS))
-    return undefined
+    if (bytes.length > 0) await publish(decoder.write(bytes))
+    // An empty answer waited its budget and has nothing to say yet; the loop
+    // asks again, which waits at the daemon rather than here.
+    return read.outcome
   }
 
   const follow = async (): Promise<void> => {
@@ -217,7 +200,7 @@ export async function createRemoteTty(
         finish({ exitCode: null, signal: null })
         return
       }
-      if (finished) return
+      if (finished || releasing) return
       if (ended != null) {
         finish({
           exitCode: ended?.exitCode ?? null,
@@ -245,6 +228,9 @@ export async function createRemoteTty(
     async terminate(): Promise<void> {
       stopping ??= (async () => {
         if (finished) return
+        // Before the request, so a read already in flight resumes into a loop
+        // that is stopping rather than asking again.
+        releasing = true
         await wire.terminate(started.termId)
         // One last pull, so output produced during teardown is not lost, then
         // the facts the daemon kept. A terminal the daemon no longer knows reads

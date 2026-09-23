@@ -42,17 +42,22 @@ function fakeTerminalDaemon(options: {
 }) {
   const calls: { method: string; params: unknown }[] = []
   const chunks = options.chunks ?? []
+  const waiting: (() => void)[] = []
   let offset = 0
   let reads = 0
   let terminated = false
 
+  /** Whether the terminal has exited, by the script's own count or by release. */
+  const ended = (): boolean =>
+    terminated || reads >= (options.exitAfterReads ?? Number.POSITIVE_INFINITY)
+
   const channel: NodeChannel = {
     onPipeFrame: () => () => {},
-    request(method, params) {
+    async request(method, params) {
       calls.push({ method, params })
       switch (method) {
         case 'term.spawn':
-          return Promise.resolve({ termId: 't1', pid: 4242 }) as never
+          return { termId: 't1', pid: 4242 } as never
         case 'term.read': {
           reads += 1
           const request = params as { fromByte: number }
@@ -65,25 +70,31 @@ function fakeTerminalDaemon(options: {
             cursor = end
           }
           offset = cursor
-          return Promise.resolve({
+          // A read with nothing to answer holds until the terminal is released,
+          // which is what the daemon's wait budget does; one that returned at
+          // once would spin the proxy's loop.
+          if (!ended() && text === '') {
+            await new Promise<void>(resolve => { waiting.push(resolve) })
+          }
+          return {
             data: Buffer.from(text, 'utf8').toString('base64'),
             nextOffset: offset,
             lossy: false,
-          }) as never
+            ...ended() ? { outcome: { exitCode: options.exitCode ?? 0, signal: null } } : {},
+          } as never
         }
-        case 'term.outcome': {
-          const done = terminated || reads >= (options.exitAfterReads ?? Number.POSITIVE_INFINITY)
-          return Promise.resolve(done ? { exitCode: options.exitCode ?? 0, signal: null } : null) as never
-        }
+        case 'term.outcome':
+          return (ended() ? { exitCode: options.exitCode ?? 0, signal: null } : null) as never
         case 'term.inspectForeground':
-          return Promise.resolve(options.foreground ?? null) as never
+          return (options.foreground ?? null) as never
         case 'term.signalForeground':
-          return Promise.resolve({ processGroupId: 777 }) as never
+          return { processGroupId: 777 } as never
         case 'term.terminate':
           terminated = true
-          return Promise.resolve({}) as never
+          for (const resolve of waiting.splice(0)) resolve()
+          return {} as never
         default:
-          return Promise.resolve({}) as never
+          return {} as never
       }
     },
   }

@@ -31,9 +31,10 @@ function encoded(text: string): string {
 /**
  * A daemon that answers what it was told to answer.
  * @param options - what each read and each outcome call returns, in order.
- *   Reads are consumed: once the script runs out the window holds nothing new,
- *   the way a daemon that has already served those bytes answers. Outcomes are
- *   consumed too, and a spent script leaves the terminal running.
+ *   Reads are consumed; once the script runs out, a read of the terminal holds
+ *   until the terminal is released, the way a daemon that honours the read's
+ *   wait budget answers a quiet terminal. Outcomes are consumed by the
+ *   teardown's own question and default to "still running".
  * @returns the wire and the calls it recorded.
  */
 function scriptedWire(options: {
@@ -41,8 +42,10 @@ function scriptedWire(options: {
   readonly outcomes?: readonly (TtyWireOutcome | null | Error)[]
 } = {}): { wire: TtyWire; calls: Call[] } {
   const calls: Call[] = []
+  const waiting: (() => void)[] = []
   let reads = 0
   let outcomes = 0
+  let released = false
   return {
     calls,
     wire: {
@@ -52,9 +55,16 @@ function scriptedWire(options: {
       },
       async read(termId, fromByte, waitMs): Promise<TtyWireRead> {
         calls.push({ kind: 'read', termId, fromByte, waitMs })
-        const answer = options.reads?.[reads++] ?? { data: '', nextOffset: fromByte, lossy: false }
-        if (answer instanceof Error) throw answer
-        return answer
+        const answer = options.reads?.[reads++]
+        if (answer !== undefined) {
+          if (answer instanceof Error) throw answer
+          return answer
+        }
+        // Nothing left to answer with: hold the read until the terminal is
+        // released, because a read that returned at once would spin the loop
+        // that the wire's wait budget exists to keep quiet.
+        if (!released) await new Promise<void>(resolve => { waiting.push(resolve) })
+        return { data: '', nextOffset: fromByte, lossy: false }
       },
       async write(termId, data): Promise<void> {
         calls.push({ kind: 'write', termId, data })
@@ -64,6 +74,8 @@ function scriptedWire(options: {
       },
       async terminate(termId): Promise<void> {
         calls.push({ kind: 'terminate', termId })
+        released = true
+        for (const resolve of waiting.splice(0)) resolve()
       },
       async outcome(termId): Promise<TtyWireOutcome | null> {
         calls.push({ kind: 'outcome', termId })
@@ -195,21 +207,6 @@ test('a dropped transport settles the terminal instead of reading forever', asyn
   const { wire } = scriptedWire({ reads: [new Error('socket hang up')] })
   const handle = await createRemoteTty(wire, request)
   assert.deepEqual(await settled(handle.done), { exitCode: null, signal: null })
-})
-
-test('a daemon that cannot report exit in a read still settles the terminal', async () => {
-  // An agent older than this plugin's `waitMs` answers a read at once and
-  // cannot attach exit facts to it, so the facts are asked for directly.
-  const { wire, calls } = scriptedWire({
-    reads: [{ data: encoded('bye\n'), nextOffset: 4, lossy: false }],
-    outcomes: [{ exitCode: 5, signal: null }],
-  })
-  const handle = await createRemoteTty(wire, request)
-  const output = watcher(handle)
-
-  assert.deepEqual(await settled(handle.done), { exitCode: 5, signal: null })
-  assert.equal(output.seen(), 'bye\n')
-  assert.equal(calls.some(call => call.kind === 'outcome'), true)
 })
 
 test('a terminal that cannot be allocated fails the caller', async () => {
