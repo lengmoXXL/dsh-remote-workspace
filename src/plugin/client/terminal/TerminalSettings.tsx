@@ -14,7 +14,7 @@
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react'
 import {
   Button,
-  IconChevronDownOutline14,
+  IconChevronDownOutlineRegular,
   Input,
   Menu,
   Switch,
@@ -110,7 +110,7 @@ export function TerminalSettings(props: TerminalSettingsProps): ReactNode {
           <span className={css.name}>{t('settings.title')}</span>
           <span className={css.description}>{t('settings.description')}</span>
         </span>
-        <IconChevronDownOutline14 className={open ? `${css.chevron} ${css.chevronOpen}` : css.chevron} />
+        <IconChevronDownOutlineRegular className={open ? `${css.chevron} ${css.chevronOpen}` : css.chevron} />
       </button>
       {open
         ? (
@@ -142,7 +142,7 @@ export function TerminalSettings(props: TerminalSettingsProps): ReactNode {
                     }}
                   >
                     {settings.fontFamily}
-                    <IconChevronDownOutline14 />
+                    <IconChevronDownOutlineRegular />
                   </Button>
                 )}
               />

@@ -13,8 +13,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import {
   Button,
-  IconFolderClose16,
-  IconWarningOutline16,
+  IconFolderCloseRegular,
+  IconWarningOutlineRegular,
   Input,
   Modal,
 } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -48,7 +48,7 @@ function DialogError({ message }: { message: string | undefined }) {
   if (message === undefined) return null
   return (
     <div className={css.alert}>
-      <IconWarningOutline16 />
+      <IconWarningOutlineRegular />
       <span>{message}</span>
     </div>
   )
@@ -228,7 +228,7 @@ function DirectoryPicker({ nodeId, value, onChange, listDirs, t }: {
               className={css.pickerItem}
               onClick={() => navigate(entry.path)}
             >
-              <IconFolderClose16 />
+              <IconFolderCloseRegular />
               <span>{entry.name}</span>
             </button>
           ))

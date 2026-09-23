@@ -2,20 +2,20 @@
  * The terminal's display preferences in the browser, and where they come from.
  *
  * Font, size, line height, cursor blink, and scrollback change how a shell is
- * drawn, never how it runs. They are the plugin's own settings, so the durable
- * copy lives in the Host's user-settings document under
+ * drawn, never how it runs. They are fields of this plugin's own config, so the
+ * durable copy lives in the Host's document under
  * {@link TERMINAL_DISPLAY_NAMESPACE}; this module is the one place the browser
- * reads them. A scope is bound when the settings service is composed, and every
+ * reads them. A form is bound when the settings service is composed, and every
  * accepted section is published here, so the settings card and the shells never
  * disagree — including a shell drawn before the first section arrived, which
- * the subscription redraws. A page that never binds a scope still gets a
+ * the subscription redraws. A page that never binds a form still gets a
  * working terminal: it draws with the schema's defaults and keeps a change for
  * as long as the page lives.
  *
  * @module dsh-remote-workspace/plugin/client/terminal/settings
  */
 
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { TERMINAL_DISPLAY_DEFAULTS, type TerminalDisplaySettings } from '../../../terminal/shared/display.ts'
 
 /** One family the browser reports from this machine's font list. */
@@ -97,8 +97,8 @@ export function fontStack(family: string): string {
   return family === GENERIC_FAMILY ? family : `"${family}", monospace`
 }
 
-/** The durable scope, once the settings service is composed. */
-let scope: SettingsScope<TerminalDisplaySettings> | undefined
+/** The durable form, once the settings service is composed. */
+let scope: ConfigForm<TerminalDisplaySettings> | undefined
 
 /** The snapshot every reader holds until a preference moves. */
 let cached: TerminalDisplaySettings = { ...TERMINAL_DISPLAY_DEFAULTS }
@@ -134,10 +134,10 @@ function adopt(): void {
 
 /**
  * Bind the durable preferences, and follow them for as long as the caller lives.
- * @param bound - the scope over this plugin's settings namespace.
+ * @param bound - the form over this plugin's config entry.
  * @returns the disposer that unbinds it.
  */
-export function bindTerminalDisplaySettings(bound: SettingsScope<TerminalDisplaySettings>): () => void {
+export function bindTerminalDisplaySettings(bound: ConfigForm<TerminalDisplaySettings>): () => void {
   scope = bound
   const stop = bound.subscribe(adopt)
   adopt()

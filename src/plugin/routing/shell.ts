@@ -21,9 +21,8 @@
 import type {
   ShellExecRequest,
   ShellExecSpec,
+  ShellExecution,
   ShellExecutor,
-  ShellProcess,
-  ShellRunResult,
 } from '@deepseek-ai/dsh-shell'
 import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import type { AnchorRoute } from '../../storage/anchors.ts'
@@ -35,7 +34,7 @@ import { classifyPath } from '../../models/routing.ts'
  */
 export type ShellExecutorContract = Pick<
   ShellExecutor,
-  'resolve' | 'run' | 'start' | 'sandboxMode'
+  'resolve' | 'execute' | 'sandboxMode'
 >
 
 /** What the routing executor needs from its owner. */
@@ -77,12 +76,8 @@ export function createRoutingShellExecutor(deps: RoutingShellDeps): ShellExecuto
       return delegateFor(request.workdir ?? '').resolve(request)
     },
 
-    run(spec: ShellExecSpec): Promise<ShellRunResult> {
-      return delegateFor(spec.workdir).run(spec)
-    },
-
-    start(spec: ShellExecSpec): Promise<ShellProcess> {
-      return delegateFor(spec.workdir).start(spec)
+    execute(spec: ShellExecSpec): Promise<ShellExecution> {
+      return delegateFor(spec.workdir).execute(spec)
     },
   }
 }

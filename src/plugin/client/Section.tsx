@@ -12,16 +12,16 @@
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   Button,
-  IconBranchOutline16,
-  IconEllipsisOutline16,
-  IconFolderClose16,
-  IconFolderOpen16,
-  IconGlobeOutline14,
-  IconLinkOutline16,
-  IconPlusOutline16,
-  IconProjectAddOutline16,
-  IconRefreshOutline16,
-  IconWarningOutline16,
+  IconBranchOutlineRegular,
+  IconEllipsisOutlineRegular,
+  IconFolderCloseRegular,
+  IconFolderOpenRegular,
+  IconGlobeOutlineRegular,
+  IconLinkOutlineRegular,
+  IconPlusOutlineRegular,
+  IconProjectAddOutlineRegular,
+  IconRefreshOutlineRegular,
+  IconWarningOutlineRegular,
   Menu,
   Modal,
   StateDot,
@@ -353,7 +353,7 @@ function ActionsMenu({ name, busy, actions, t }: {
         <Button
           size="sm"
           disabled={busy}
-          icon={<IconEllipsisOutline16 />}
+          icon={<IconEllipsisOutlineRegular />}
           aria-label={label}
           title={label}
           onClick={(event) => {
@@ -390,7 +390,7 @@ function WorktreeRow({ entry, busy, onRemove, onToggleOpen, t }: {
   const openLabel = controlLabel(t, entry.open ? 'closeWorktree' : 'openWorktree', entry.anchor.name)
   return (
     <div className={css.worktree}>
-      <span className={css.worktreeIcon}><IconBranchOutline16 /></span>
+      <span className={css.worktreeIcon}><IconBranchOutlineRegular /></span>
       <span className={css.worktreeMain}>
         <span className={css.worktreeName}>{entry.anchor.name}</span>
         {entry.anchor.branch === undefined
@@ -405,7 +405,7 @@ function WorktreeRow({ entry, busy, onRemove, onToggleOpen, t }: {
         <span className={css.spacer} />
         <Button
           size="sm"
-          icon={entry.open ? <IconFolderOpen16 /> : <IconFolderClose16 />}
+          icon={entry.open ? <IconFolderOpenRegular /> : <IconFolderCloseRegular />}
           disabled={busy}
           aria-label={openLabel}
           title={openLabel}
@@ -519,7 +519,7 @@ export function RemoteWorktreesSection(props: SectionProps) {
         <div className={css.toolbar}>
           <Button
             size="sm"
-            icon={<IconRefreshOutline16 />}
+            icon={<IconRefreshOutlineRegular />}
             disabled={busy}
             aria-label={t('refresh')}
             title={t('refresh')}
@@ -528,7 +528,7 @@ export function RemoteWorktreesSection(props: SectionProps) {
           <Button
             size="sm"
             variant="primary"
-            icon={<IconPlusOutline16 />}
+            icon={<IconPlusOutlineRegular />}
             disabled={busy}
             aria-label={t('addMachine')}
             title={t('addMachine')}
@@ -539,7 +539,7 @@ export function RemoteWorktreesSection(props: SectionProps) {
 
       {error === undefined ? null : (
         <div className={css.alert} role="alert">
-          <IconWarningOutline16 />
+          <IconWarningOutlineRegular />
           <span>{error}</span>
         </div>
       )}
@@ -596,7 +596,7 @@ export function RemoteWorktreesSection(props: SectionProps) {
                     aria-expanded={machineOpen}
                     onClick={() => toggle(openMachines, setOpenMachines, node.nodeId)}
                   >
-                    <span className={css.machineIcon}><IconGlobeOutline14 /></span>
+                    <span className={css.machineIcon}><IconGlobeOutlineRegular /></span>
                     <span className={css.headText}>
                       <span className={css.machineTitle}>
                         <b>{node.title}</b>
@@ -618,7 +618,7 @@ export function RemoteWorktreesSection(props: SectionProps) {
                     {here || state === 'ready' ? null : (
                       <Button
                         size="sm"
-                        icon={<IconLinkOutline16 />}
+                        icon={<IconLinkOutlineRegular />}
                         disabled={busy}
                         aria-label={connectLabel}
                         title={connectLabel}
@@ -627,7 +627,7 @@ export function RemoteWorktreesSection(props: SectionProps) {
                     )}
                     <Button
                       size="sm"
-                      icon={<IconProjectAddOutline16 />}
+                      icon={<IconProjectAddOutlineRegular />}
                       disabled={busy}
                       aria-label={repositoryLabel}
                       title={repositoryLabel}
@@ -678,7 +678,7 @@ export function RemoteWorktreesSection(props: SectionProps) {
                 )}
                 {failures.length === 0 ? null : (
                   <div className={css.nodeAlert} role="alert">
-                    <IconWarningOutline16 />
+                    <IconWarningOutlineRegular />
                     <span className={css.nodeAlertBody}>
                       {failures.map(failure => <span key={failure}>{failure}</span>)}
                     </span>
@@ -711,7 +711,7 @@ export function RemoteWorktreesSection(props: SectionProps) {
                           <Fragment key={repo.repoId}>
                             <div className={css.repo}>
                               <span className={css.repoIcon}>
-                                {entry.git ? <IconBranchOutline16 /> : <IconFolderClose16 />}
+                                {entry.git ? <IconBranchOutlineRegular /> : <IconFolderCloseRegular />}
                               </span>
                               <span className={css.rowText}>
                                 <span className={css.repoName}>{repo.name}</span>
@@ -720,7 +720,7 @@ export function RemoteWorktreesSection(props: SectionProps) {
                               <span className={css.actions}>
                                 <Button
                                   size="sm"
-                                  icon={<IconBranchOutline16 />}
+                                  icon={<IconBranchOutlineRegular />}
                                   disabled={busy || !entry.git}
                                   aria-label={worktreeLabel}
                                   title={worktreeLabel}
@@ -729,8 +729,8 @@ export function RemoteWorktreesSection(props: SectionProps) {
                                 <Button
                                   size="sm"
                                   icon={directory?.open === true
-                                    ? <IconFolderOpen16 />
-                                    : <IconFolderClose16 />}
+                                    ? <IconFolderOpenRegular />
+                                    : <IconFolderCloseRegular />}
                                   disabled={busy || cannotOpen}
                                   aria-label={directoryLabel}
                                   title={directoryLabel}

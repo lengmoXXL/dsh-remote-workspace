@@ -42,10 +42,10 @@ async function readArtifact(path: string): Promise<string> {
 
 /** Icons the client imports; every one renders an empty svg. */
 const ICON_NAMES = [
-  'IconBranchOutline16', 'IconChevronDownOutline14', 'IconCloseOutline16', 'IconEllipsisOutline16',
-  'IconFolderClose16', 'IconFolderOpen16', 'IconGlobeOutline14',
-  'IconLinkOutline16', 'IconPlusOutline16', 'IconProjectAddOutline16', 'IconRefreshOutline16',
-  'IconWarningOutline16',
+  'IconBranchOutlineRegular', 'IconChevronDownOutlineRegular', 'IconCloseOutlineRegular',
+  'IconEllipsisOutlineRegular', 'IconFolderCloseRegular', 'IconFolderOpenRegular',
+  'IconGlobeOutlineRegular', 'IconLinkOutlineRegular', 'IconPlusOutlineRegular',
+  'IconProjectAddOutlineRegular', 'IconRefreshOutlineRegular', 'IconWarningOutlineRegular',
 ] as const
 
 /**
@@ -146,11 +146,11 @@ function stubContext(): {
   const focused: string[] = []
   const ctx = {
     effect: (factory: () => unknown) => factory(),
-    // The settings scope is acquired softly, so the stub answers a request for
-    // it with the same context — the way the real service would arrive.
+    // The config forms are acquired softly, so the stub answers a request for
+    // the form with one that is empty — the way the real service would arrive.
     inject: (_deps: readonly string[], callback: (scoped: unknown) => void) => { callback(ctx) },
-    settingsScope: {
-      bind: () => ({
+    configForms: {
+      get: () => ({
         getSnapshot: () => ({ value: undefined }),
         subscribe: () => () => {},
         set: () => Promise.resolve(),

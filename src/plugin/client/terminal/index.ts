@@ -32,8 +32,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { PaneId, SidebarRightTabDefinition, TabId } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
-// Type-only: the settings scope service merge (ctx.settingsScope) this half
-// binds the display preferences through.
+// Type-only: the config-forms service merge (ctx.configForms) this half binds
+// the display preferences through.
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 // Type-only: declares the `plugins.bundle.config` slot the Plugins page fills.
 import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
@@ -152,18 +152,17 @@ export function mountTerminal(ctx: Context): void {
     () => subscribeTerminalDisplaySettings(applyTerminalDisplaySettings),
     'dsh-terminal: display preferences',
   )
-  // Those preferences are this plugin's own settings, so the durable copy lives
-  // in the Host's settings document: the Host registers the namespace, the
-  // scope below is this half's handle on it, and the card keyed by it is what
-  // the Plugins settings page draws. Acquired softly — a deployment without the
-  // settings service still opens terminals, drawn with the schema's defaults,
-  // and shows no card.
-  ctx.inject(['settingsScope'], (scoped) => {
+  // Those preferences are fields of this plugin's own config, so the durable
+  // copy lives in the Host's document: the form below is this half's handle on
+  // that entry, and the card keyed by the bundle is what the Plugins settings
+  // page draws. Acquired softly — a deployment without the settings service
+  // still opens terminals, drawn with the schema's defaults, and shows no card.
+  ctx.inject(['configForms'], (scoped) => {
     scoped.effect(
-      () => bindTerminalDisplaySettings(scoped.settingsScope.bind<TerminalDisplaySettings>({
-        namespace: TERMINAL_DISPLAY_NAMESPACE,
-      })),
-      'dsh-terminal: display preferences scope',
+      () => bindTerminalDisplaySettings(
+        scoped.configForms.get<TerminalDisplaySettings>(TERMINAL_DISPLAY_NAMESPACE),
+      ),
+      'dsh-terminal: display preferences form',
     )
     scoped.effect(() => scoped.slots.inject('plugins.bundle.config', () => scoped.slots.register({
       name: 'plugins.bundle.config',

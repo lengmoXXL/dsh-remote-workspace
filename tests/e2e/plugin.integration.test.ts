@@ -116,7 +116,7 @@ test('the composed delegate still refuses a conflicted create', async () => {
 
 test('a local command runs through the composed sandboxed executor', async () => {
   const spec = ctx.shell.resolve({ command: 'echo local-ok', workdir: dir })
-  const result = await ctx.shell.run(spec)
+  const result = await (await ctx.shell.execute(spec)).result()
 
   assert.equal(result.exitCode, 0)
   assert.match(result.stdout.text, /local-ok/)
@@ -126,7 +126,7 @@ test('a command in the anchored worktree routes to the node and fails offline', 
   const spec = ctx.shell.resolve({ command: 'echo remote-ok', workdir: anchorPath })
 
   await assert.rejects(
-    () => ctx.shell.run(spec),
+    async () => { await (await ctx.shell.execute(spec)).result() },
     /not connected/,
   )
 })

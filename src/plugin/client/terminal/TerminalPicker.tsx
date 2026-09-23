@@ -23,7 +23,7 @@
  */
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { Button, IconCloseOutline16, IconWarningOutline16, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconCloseOutlineRegular, IconWarningOutlineRegular, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
 import { reasonOf } from '../api.ts'
 import type { TerminalKey } from './locales.ts'
@@ -125,7 +125,7 @@ export function TerminalPicker({
       <div className={css.picker} data-terminal-picker data-terminal-session={sessionId}>
         {error === undefined ? null : (
           <div className={css.alert} role="alert">
-            <IconWarningOutline16 />
+            <IconWarningOutlineRegular />
             <span>{error}</span>
           </div>
         )}
@@ -174,7 +174,7 @@ export function TerminalPicker({
                     disabled={closing !== undefined}
                     onClick={() => void remove(entry.id)}
                   >
-                    <IconCloseOutline16 />
+                    <IconCloseOutlineRegular />
                   </Button>
                 </div>
               )

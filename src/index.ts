@@ -31,14 +31,14 @@
  * @module dsh-remote-workspace
  */
 
-import type { Context } from '@deepseek-ai/cordis'
+import type { Context, Volatile } from '@deepseek-ai/cordis'
 import { LocalBashExecutor } from '@deepseek-ai/dsh-bash-local'
 import { SandboxBashExecutor } from '@deepseek-ai/dsh-bash-sandbox'
 import { SandboxedFileSystem } from '@deepseek-ai/dsh-fs-sandbox'
 import { LocalSubprocessRuntime } from '@deepseek-ai/dsh-subprocess-local'
 import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
-// Type-only: the settings service merge (ctx.settings) the display namespace is
-// registered through.
+// Type-only: the settings service merge (ctx.settings) this plugin's config
+// form is projected through.
 import type {} from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import { homedir } from 'node:os'
@@ -60,9 +60,8 @@ import { createAnchorStore } from './storage/anchors.ts'
 import { createNodeRegistry, LOCAL_NODE_ID } from './storage/nodes.ts'
 import type { NodeId } from './storage/nodes.ts'
 import { createRepoStore } from './storage/repos.ts'
-import { TerminalDisplaySchema } from './terminal/host/display.ts'
 import { createTerminalRegistry, type TerminalSettings } from './terminal/host/registry.ts'
-import { TERMINAL_DISPLAY_NAMESPACE } from './terminal/shared/display.ts'
+import { TERMINAL_DISPLAY_BOUNDS, TERMINAL_DISPLAY_DEFAULTS } from './terminal/shared/display.ts'
 import { registerTerminalSocket } from './terminal/host/socket.ts'
 import { SOCKET_PATH } from './terminal/shared/wire.ts'
 import { registerTerminalTool } from './tools/terminal.ts'
@@ -179,10 +178,34 @@ export interface Config {
    * immediately regardless, because the browser sends `close` first.
    */
   detachGraceMs?: number
+  /**
+   * Family every terminal is drawn in, by name; one of this machine's own
+   * monospace fonts. Volatile: the browser half edits it and every open
+   * terminal redraws, without reloading this plugin.
+   */
+  fontFamily?: Volatile<string>
+  /** Cell height in pixels. Volatile, like {@link Config.fontFamily}. */
+  fontSize?: Volatile<number>
+  /** Line box as a multiple of the font size. Volatile. */
+  lineHeight?: Volatile<number>
+  /** Whether the cursor blinks while a shell waits. Volatile. */
+  cursorBlink?: Volatile<boolean>
+  /** Lines the browser keeps, above what a node's daemon retains. Volatile. */
+  scrollback?: Volatile<number>
 }
 
-/** Validated plugin config. */
-export const Config: z<Config> = z.object({
+/** The display rows' bounds, named once for the schema and the browser. */
+const { fontSize, lineHeight, scrollback } = TERMINAL_DISPLAY_BOUNDS
+
+/**
+ * Validated plugin config.
+ *
+ * The schema is inferred rather than annotated, the way every dsh-plugin config
+ * with volatile fields is: a volatile field's input and output types differ, so
+ * the two cannot both be the interface. The interface is still the shape
+ * {@link apply} receives.
+ */
+export const Config = z.object({
   dataDir: z.string(),
   remoteRipgrep: z.string(),
   worktreeRoot: z.string(),
@@ -192,6 +215,14 @@ export const Config: z<Config> = z.object({
   shellArgs: z.array(z.string()),
   graceMs: z.number().step(1).min(1),
   detachGraceMs: z.number().step(1).min(0),
+  fontFamily: z.string().default(TERMINAL_DISPLAY_DEFAULTS.fontFamily).volatile(),
+  fontSize: z.number().step(fontSize.step).min(fontSize.min).max(fontSize.max)
+    .default(TERMINAL_DISPLAY_DEFAULTS.fontSize).volatile(),
+  lineHeight: z.number().step(lineHeight.step).min(lineHeight.min).max(lineHeight.max)
+    .default(TERMINAL_DISPLAY_DEFAULTS.lineHeight).volatile(),
+  cursorBlink: z.boolean().default(TERMINAL_DISPLAY_DEFAULTS.cursorBlink).volatile(),
+  scrollback: z.number().step(scrollback.step).min(scrollback.min).max(scrollback.max)
+    .default(TERMINAL_DISPLAY_DEFAULTS.scrollback).volatile(),
 })
 
 /** Root managed worktrees are cut under when the config names none. */
@@ -409,12 +440,13 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   registerTerminalSocket(ctx, SOCKET_PATH, terminals)
   registerTerminalTool(ctx, terminals)
 
-  // The terminal's display preferences are this plugin's own settings: the
-  // browser half binds a scope to the namespace and draws the card that edits
-  // it in the Plugins settings page. Acquired softly — a deployment without the
-  // settings service still gets a terminal, drawn with the schema's defaults.
+  // The display preferences are fields of this plugin's own config, so the Host
+  // projects them into a form by itself; the browser half draws that page in the
+  // Plugins settings page, which is why the automatic shape is turned off rather
+  // than showing the same fields twice. Acquired softly — a deployment without
+  // the settings service still opens terminals, drawn with the schema defaults.
   ctx.inject(['settings'], (settingsCtx) => {
-    settingsCtx.settings.register(TERMINAL_DISPLAY_NAMESPACE, TerminalDisplaySchema)
+    settingsCtx.effect(() => settingsCtx.settings.configure({ auto: false }, ctx.fiber))
   })
 
   // Session end releases that Session's terminals. There is no host-plane

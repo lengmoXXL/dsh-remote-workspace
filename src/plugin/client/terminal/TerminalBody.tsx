@@ -14,8 +14,8 @@
 import { useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import {
   Button,
-  IconEllipsisOutline16,
-  IconRefreshOutline16,
+  IconEllipsisOutlineRegular,
+  IconRefreshOutlineRegular,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime, Translate } from '@deepseek-ai/dsh-client-ui-slots'
 import type { TerminalPanelFace } from './index.ts'
@@ -105,7 +105,7 @@ export function TerminalBody(
               className={css.action}
               size="sm"
               variant="ghost"
-              icon={<IconRefreshOutline16 />}
+              icon={<IconRefreshOutlineRegular />}
               aria-label={t('action.restart')}
               title={t('action.restart')}
               onClick={() => {
@@ -118,7 +118,7 @@ export function TerminalBody(
           className={css.action}
           size="sm"
           variant="ghost"
-          icon={<IconEllipsisOutline16 />}
+          icon={<IconEllipsisOutlineRegular />}
           data-terminal-manage
           aria-label={t('action.manage')}
           title={t('action.manage')}
