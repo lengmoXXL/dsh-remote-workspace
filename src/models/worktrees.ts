@@ -1054,18 +1054,18 @@ export interface WorkspaceLabelParts {
  * things that distinguish one from another — which machine, which repository,
  * and which checkout — and never the opaque ids this plugin routes by. The
  * machine leads in brackets because it is context a person reads past; the
- * checkout trails in its own brackets because it is what they chose. A
+ * checkout trails after a colon because it is what they chose. A
  * directory opened as itself has no checkout to name, so its title is the
  * machine and the repository alone. An unnamed repository falls back to its
  * last path segment, which is what a user would have called it; a path with no
  * segment at all falls back to the whole path so the label is never blank.
  * @param parts - the machine, repository, and checkout names.
- * @returns the composed title, e.g. `[vm149] ACM-notes : [web-verify]`.
+ * @returns the composed title, e.g. `[vm149] ACM-notes : web-verify`.
  */
 export function workspaceLabel(parts: WorkspaceLabelParts): string {
   const base = posix.basename(parts.repoPath)
   const repo = parts.repoName?.trim()
     || (base === '' || base === '/' ? parts.repoPath : base)
   const machine = `[${parts.machine}]`
-  return parts.name === undefined ? `${machine} ${repo}` : `${machine} ${repo} : [${parts.name}]`
+  return parts.name === undefined ? `${machine} ${repo}` : `${machine} ${repo} : ${parts.name}`
 }
