@@ -42,7 +42,6 @@ const PTC_ARGV = [
   String(MAX_FRAME),
 ]
 
-/** One length-framed protocol message. */
 function frame(message: Record<string, unknown>): Buffer {
   const body = Buffer.from(JSON.stringify(message), 'utf8')
   const header = Buffer.alloc(4)

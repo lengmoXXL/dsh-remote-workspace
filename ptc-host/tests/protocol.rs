@@ -38,7 +38,6 @@ struct Worker {
 }
 
 impl Worker {
-    /// Spawn the built worker with the control socketpair on descriptor 7.
     fn start() -> Self {
         let (host_end, child_end) = UnixStream::pair().expect("a control socketpair");
         let child_fd = child_end.as_raw_fd();
@@ -85,7 +84,6 @@ impl Worker {
         }
     }
 
-    /// Write one length-framed JSON message.
     fn send(&mut self, message: &Value) {
         let body = serde_json::to_vec(message).expect("a JSON frame");
         let mut frame = Vec::with_capacity(body.len() + 4);
@@ -110,7 +108,6 @@ impl Worker {
         );
     }
 
-    /// Read one length-framed JSON message.
     fn receive(&mut self) -> Value {
         self.wait_readable();
         let mut header = [0u8; 4];

@@ -17,7 +17,7 @@ path = "src/main.rs"
 v8 = "152.2.0"
 
 [dev-dependencies]
-# The protocol test frames JSON in Rust rather than through Node.
+# The protocol test frames and reads JSON itself; the host does neither.
 serde_json = "1"
 # The protocol test hands the child its control socketpair on descriptor 7.
 libc = "0.2"
