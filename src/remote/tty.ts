@@ -38,10 +38,11 @@ const READ_WAIT_MS = 20_000
  *
  * A daemon that knows `waitMs` returns an empty read only after waiting for
  * one, so this pause is invisible beside that wait. One that does not — an
- * agent older than this plugin — answers at once, and this pace is what keeps
- * that fast answer from becoming a hot loop.
+ * agent older than this plugin — answers at once, and this pace is the poll
+ * interval this loop replaced: the two requests an answer costs therefore cost
+ * no more than the old poll's two did.
  */
-const IDLE_PACE_MS = 25
+const IDLE_PACE_MS = 40
 
 /** One terminal allocation, as the daemon's wire carries it. */
 export interface TtyWireSpawnRequest {
